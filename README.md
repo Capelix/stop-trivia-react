@@ -53,6 +53,7 @@ Follow these steps to set up and run the Stop Trivia Online project locally:
 - `/navigation` - Navigation configuration
 - `/services` - API and service integrations (e.g., Firebase)
 - `/locales` - Translations and localization files
+- `/tests/e2e` - Comprehensive end-to-end test suite using Detox
 
 ### ⚙️ Main Features
 
@@ -62,12 +63,35 @@ Follow these steps to set up and run the Stop Trivia Online project locally:
 - **Custom Themes:** Easily configurable color/font schemes (`constants/Theme.ts`).
 - **App Update Notification:** In-app notification for new versions (`components/AppVersionUpdate.tsx`).
 - **Multi-lingual:** i18n support with translation files in `/locales`.
+- **Comprehensive E2E Testing:** Full end-to-end test suite using Detox covering all app features and game modes.
+
+### 🧪 Testing
+
+This project includes a comprehensive end-to-end test suite located in `/tests/e2e/`:
+
+- **Full App Coverage:** Tests cover authentication, navigation, both game modes (Stop Trivia and Tic Tac Toe), settings, and error handling
+- **Cross-Platform:** Tests run on both iOS and Android simulators/emulators
+- **Real User Scenarios:** Tests simulate real user interactions including game play, input validation, and edge cases
+- **Performance Testing:** Includes load time validation and rapid interaction testing
+- **CI/CD Ready:** Designed for continuous integration pipelines
+
+**Running E2E Tests:**
+```bash
+cd tests/e2e
+npm install
+npm run build:ios    # For iOS
+npm run build:android # For Android
+npm test             # Run all tests
+```
+
+See `/tests/e2e/README.md` for detailed testing documentation and setup instructions.
 
 ### 💡 Notes
 
 - You must have [Node.js](https://nodejs.org/), [pnpm](https://pnpm.io/), and [Expo CLI](https://docs.expo.dev/get-started/installation/) installed.
 - For Google login to work, set up your project in [Firebase Console](https://console.firebase.google.com/) and use the provided OAuth client IDs.
 - For iOS simulator or device testing, a macOS setup with Xcode is required.
+- For E2E testing, you'll need Detox CLI and appropriate simulators/emulators set up.
 
 ### 🌟 Contributing
 
@@ -93,4 +117,7 @@ All commands are run from the root of the project, from a terminal:
 | `pnpm test`                     | Runs unit tests (if configured)                                  |
 | `pnpm build`                    | Builds the production bundle                                     |
 | `pnpm start`                    | Alias for `pnpm expo`                                            |
+| `cd tests/e2e && npm test`      | Runs comprehensive E2E tests                                     |
+| `cd tests/e2e && npm run test:ios` | Runs E2E tests on iOS simulator                               |
+| `cd tests/e2e && npm run test:android` | Runs E2E tests on Android emulator                        |
 |----------------------------------------------------------------------------------------------------|
