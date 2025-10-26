@@ -8,7 +8,7 @@ const TestData = {
   TEST_USER: {
     uid: "test-user-id",
     displayName: "Test User",
-    email: "test@example.com",
+    email: "stoptest@test.com",
     photoURL: null,
   },
 
