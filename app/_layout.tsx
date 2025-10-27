@@ -18,7 +18,7 @@ import { WaitingVerification } from "@/components/WaitingVerification"
 import { getVersion } from "react-native-device-info"
 import { FetchVersion } from "@/db/FetchVersion"
 import { AppVersionUpdate } from "@/components/AppVersionUpdate"
-import mobileAds from "react-native-google-mobile-ads"
+import mobileAds, { MaxAdContentRating } from "react-native-google-mobile-ads"
 import {
   FirebaseAuthTypes,
   onAuthStateChanged,
@@ -50,6 +50,15 @@ export default function Layout() {
       if (!vibration) setItem("vibration", String(true))
       i18n.changeLanguage(languageCode ?? locales[0].languageCode)
 
+      // Initialize Mobile Ads for child-directed treatment and under age of consent
+      await mobileAds().setRequestConfiguration({
+        maxAdContentRating: MaxAdContentRating.G,
+        tagForChildDirectedTreatment: true,
+        tagForUnderAgeOfConsent: true,
+      })
+
+      await mobileAds().initialize()
+
       try {
         const currentVersion = getVersion()
         await FetchVersion().then((version) => {
@@ -61,8 +70,6 @@ export default function Layout() {
 
           setLoading(false)
         })
-
-        await mobileAds().initialize()
       } catch (error: any) {
         console.log("Error fetching version: ", error)
         setIsAppUpdated(true)
