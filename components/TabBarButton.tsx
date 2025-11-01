@@ -1,6 +1,6 @@
 import React, { useEffect } from "react"
 import { StyleSheet } from "react-native"
-import { HomeIcon, HashIcon } from "@/components/ui/Icons"
+import { OnlineIcon, OfflineIcon } from "@/components/ui/Icons"
 import { PlatformPressable } from "@react-navigation/elements"
 import Animated, {
   interpolate,
@@ -28,8 +28,8 @@ export const TabBarButton = ({
   color,
 }: Props) => {
   const icon = {
-    index: (props: any) => <HomeIcon {...props} />,
-    tictactoe: (props: any) => <HashIcon {...props} />,
+    index: (props: any) => <OnlineIcon {...props} />,
+    offline: (props: any) => <OfflineIcon {...props} />,
   }
 
   const scale = useSharedValue(0)

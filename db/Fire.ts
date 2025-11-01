@@ -10,7 +10,7 @@ import {
   runTransaction,
 } from "@react-native-firebase/firestore"
 import { StopModel, GameStatus, TTTModel } from "@/interfaces/Game"
-import { Player } from "@/interfaces/Player"
+import { StopPlayer, TTTPlayer } from "@/interfaces/Player"
 import { StopGameInputs } from "@/interfaces/StopGameInputs"
 
 const db = getFirestore()
@@ -24,7 +24,7 @@ class Fire {
       currentTime: 120,
       gameStatus: GameStatus.CREATED,
       playersReady: 1,
-      players: [{ id: "", name: "", points: 0, photoURL: "" }] as Player[],
+      players: [{ id: "", name: "", points: 0, photoURL: "" }] as StopPlayer[],
       host: "no-host",
       startTime: Date.now(),
       timestamp: Date.now(),
@@ -35,7 +35,7 @@ class Fire {
       currentPlayer: "X",
       gameStatus: GameStatus.CREATED,
       playersReady: 1,
-      players: [{ id: "", name: "", points: 0, photoURL: "" }] as Player[],
+      players: [{ id: "", name: "", points: 0, photoURL: "" }] as TTTPlayer[],
       filledPos: ["", "", "", "", "", "", "", "", ""],
       host: "no-host",
       startTime: Date.now(),
@@ -102,7 +102,7 @@ class Fire {
       const snap = await tx.get(gameRef)
       if (!snap.exists()) return
       const data = snap.data()
-      const players = data?.players.map((p: Player) =>
+      const players = data?.players.map((p: StopPlayer) =>
         p.id === userId ? { ...p, inputs } : p
       )
       tx.update(gameRef, { players })

@@ -1,9 +1,12 @@
 import { Tabs } from "expo-router"
-import { HomeIcon, StatsIcon } from "@/components/ui/Icons"
+import { OfflineIcon, OnlineIcon } from "@/components/ui/Icons"
 import { Theme } from "@/constants/Theme"
 import { TabBar } from "@/components/ui/TabBar"
+import { useTranslation } from "react-i18next"
 
 export default function TabsLayout() {
+  const { t } = useTranslation()
+
   return (
     <Tabs
       tabBar={(props) => <TabBar {...props} />}
@@ -11,7 +14,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: Theme.colors.text,
         tabBarStyle: {
-          backgroundColor: Theme.colors.background,
+          backgroundColor: Theme.colors.transparent,
         },
         tabBarHideOnKeyboard: true,
       }}
@@ -19,16 +22,17 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          tabBarIcon: ({ color }) => <HomeIcon color={color} />,
-          title: "Stop",
+          tabBarIcon: ({ color }) => <OnlineIcon color={color} />,
+          title: t("online"),
           tabBarActiveTintColor: Theme.colors.primary,
         }}
       />
+
       <Tabs.Screen
-        name="tictactoe"
+        name="offline"
         options={{
-          tabBarIcon: ({ color }) => <StatsIcon color={color} />,
-          title: "TTT",
+          tabBarIcon: ({ color }) => <OfflineIcon color={color} />,
+          title: t("offline"),
           tabBarActiveTintColor: Theme.colors.primary,
         }}
       />

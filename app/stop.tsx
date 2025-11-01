@@ -48,7 +48,7 @@ import BottomSheet from "@gorhom/bottom-sheet"
 import { CustomModal } from "@/components/CustomModal"
 import Clipboard from "@react-native-clipboard/clipboard"
 import NetInfo from "@react-native-community/netinfo"
-import { Player } from "@/interfaces/Player"
+import { StopPlayer } from "@/interfaces/Player"
 import { PlayerInputsInfoModal } from "@/components/PlayerInputsInfoModal"
 import {
   AdEventType,
@@ -56,10 +56,9 @@ import {
   TestIds,
 } from "react-native-google-mobile-ads"
 import { Loading } from "@/components/Loading"
+import { adInterstitialId } from "@/db/firebaseConfig"
 
-const adUnitId = __DEV__
-  ? TestIds.INTERSTITIAL
-  : "ca-app-pub-5333671658707378/4722063158"
+const adUnitId = __DEV__ ? TestIds.INTERSTITIAL : adInterstitialId
 
 export default function Stop() {
   const [gameData, setGameData] = useState<StopModel | null>(null)
@@ -75,7 +74,7 @@ export default function Stop() {
   const [isStarting, setIsStarting] = useState(false)
   const [connection, setConnection] = useState<boolean>(true)
   const [timerColor, setTimerColor] = useState(Theme.colors.gray)
-  const [inputsPlayer, setInputsPlayer] = useState<Player | null>(null)
+  const [inputsPlayer, setInputsPlayer] = useState<StopPlayer | null>(null)
   const [inputsModalVisible, setInputsModalVisible] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [inputs, setInputs] = useState({
@@ -108,7 +107,16 @@ export default function Stop() {
   }>()
 
   const interstitial = InterstitialAd.createForAdRequest(adUnitId, {
-    keywords: ["games", "gaming", "multiplayer", "action", "android"],
+    keywords: [
+      "games",
+      "gaming",
+      "multiplayer",
+      "action",
+      "android",
+      "technology",
+      "software",
+      "mobile development",
+    ],
   })
 
   useEffect(() => {
@@ -606,7 +614,7 @@ export default function Stop() {
     ).start()
   }
 
-  const handlePlayerInputsModal = (player: Player) => {
+  const handlePlayerInputsModal = (player: StopPlayer) => {
     if (mode === "offline") return
     if (!connection) return
     if (gameData?.gameStatus === GameStatus.IN_PROGRESS) return

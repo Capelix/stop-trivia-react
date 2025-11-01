@@ -487,7 +487,7 @@ export default function Settings() {
           style={{
             flexDirection: "column",
             marginVertical: 8,
-            marginBottom: insets.bottom,
+            marginBottom: insets.bottom + 8,
           }}
         >
           <Text

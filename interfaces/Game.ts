@@ -1,4 +1,4 @@
-import { Player } from "@/interfaces/Player"
+import { StopPlayer, TTTPlayer } from "@/interfaces/Player"
 
 export interface StopModel {
   gameId: string
@@ -7,7 +7,7 @@ export interface StopModel {
   currentTime: number
   gameStatus: GameStatus
   playersReady: number
-  players: Player[]
+  players: StopPlayer[]
   host: string
   startTime: number
   timestamp: number
@@ -18,8 +18,7 @@ export interface TTTModel {
   round: number
   currentPlayer: string
   gameStatus: GameStatus
-  playersReady: number
-  players: Player[]
+  players: TTTPlayer[]
   filledPos: string[]
   host: string
   startTime: number

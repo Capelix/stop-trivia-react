@@ -1,18 +1,23 @@
 import { Theme } from "@/constants/Theme"
 import { KeyboardAvoidingView, Platform, View } from "react-native"
 
-export function Screen({ children }: { children: React.ReactNode }) {
+interface Props {
+  children: React.ReactNode
+  padding?: number
+}
+
+export function Screen({ children, padding }: Props) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={{ flex: 1 }}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
     >
       <View
         style={{
           flex: 1,
           backgroundColor: Theme.colors.background,
-          padding: 16,
+          padding: padding ?? 16,
           width: "100%",
         }}
       >

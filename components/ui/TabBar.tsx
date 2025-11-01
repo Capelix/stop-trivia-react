@@ -23,18 +23,20 @@ import {
   TestIds,
   useForeground,
 } from "react-native-google-mobile-ads"
+import { adBannerId } from "@/db/firebaseConfig"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
 
-const adUnitId = __DEV__
-  ? TestIds.ADAPTIVE_BANNER
-  : "ca-app-pub-5333671658707378/7643739965"
+const adUnitId = __DEV__ ? TestIds.ADAPTIVE_BANNER : adBannerId
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const [vibrationEnabled, setVibrationEnabled] = useState(true)
-  const { getItem } = useStorage()
-
   const [dimensions, setDimensions] = useState({ height: 20, width: 100 })
-  const buttonWidth = dimensions.width / state.routes.length
+  const [isAdLoaded, setIsAdLoaded] = useState(false)
 
+  const { getItem } = useStorage()
+  const insets = useSafeAreaInsets()
+
+  const buttonWidth = dimensions.width / state.routes.length
   const bannerRef = useRef<BannerAd>(null)
 
   useForeground(() => {
@@ -67,7 +69,15 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
 
   return (
     <View style={{ position: "relative", gap: 12 }}>
-      <View onLayout={onTabbarLayout} style={styles.tabbar}>
+      <View
+        onLayout={onTabbarLayout}
+        style={[
+          {
+            bottom: isAdLoaded ? 76 : insets.bottom + 10,
+          },
+          styles.tabbar,
+        ]}
+      >
         <Animated.View
           style={[
             animatedStyle,
@@ -129,59 +139,54 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
               label={label.toString()}
               color={isFocused ? Theme.colors.primary : Theme.colors.darkGray}
             />
-
-            //   <PlatformPressable
-            //     key={route.name}
-            //     href={buildHref(route.name, route.params)}
-            //     accessibilityState={isFocused ? { selected: true } : {}}
-            //     accessibilityLabel={options.tabBarAccessibilityLabel}
-            //     testID={options.tabBarButtonTestID}
-            //     onPress={onPress}
-            //     onLongPress={onLongPress}
-            //     style={styles.tabbarItem}
-            //   >
-            //     {icon[route.name]({
-            //       color: isFocused ? Theme.colors.primary : Theme.colors.darkGray,
-            //     })}
-            //     <Text
-            //       style={{
-            //         color: isFocused ? Theme.colors.primary : Theme.colors.darkGray,
-            //         textAlign: "center",
-            //       }}
-            //     >
-            //       {label}
-            //     </Text>
-            //   </PlatformPressable>
           )
         })}
       </View>
-      <BannerAd
-        ref={bannerRef}
-        unitId={adUnitId}
-        size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-      />
+
+      <View
+        style={{
+          opacity: isAdLoaded ? 1 : 0,
+          alignItems: "center",
+        }}
+      >
+        <BannerAd
+          ref={bannerRef}
+          unitId={adUnitId}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          onAdLoaded={() => setIsAdLoaded(true)}
+          onAdFailedToLoad={() => setIsAdLoaded(false)}
+          requestOptions={{
+            keywords: [
+              "games",
+              "gaming",
+              "multiplayer",
+              "action",
+              "android",
+              "technology",
+              "software",
+              "mobile development",
+            ],
+          }}
+        />
+      </View>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
   tabbar: {
+    zIndex: 50,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: Theme.colors.background2,
     marginHorizontal: 100,
     paddingVertical: 8,
-    borderRadius: 35,
+    borderRadius: 30,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowRadius: 10,
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
+    position: "absolute",
   },
-  //   tabbarItem: {
-  //     flex: 1,
-  //     justifyContent: "center",
-  //     alignItems: "center",
-  //     gap: 4,
-  //   },
 })

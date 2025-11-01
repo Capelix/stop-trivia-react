@@ -1,8 +1,10 @@
 import { CustomModal } from "@/components/CustomModal"
 import {
   BackIcon,
+  CheckIcon,
   CopyIcon,
   OfflineIcon,
+  PlayIcon,
   RestartIcon,
   UserIcon,
   UsersIcon,
@@ -53,8 +55,7 @@ import { Loading } from "@/components/Loading"
 const adUnitId = __DEV__
   ? TestIds.INTERSTITIAL
   : "ca-app-pub-5333671658707378/4722063158"
-const initialBoard = Array(9).fill("")
-const POS = { X: "X", O: "O" }
+const initialBoard = Array(16).fill("")
 
 export default function TTT() {
   const [gameData, setGameData] = useState<TTTModel | null>(null)
@@ -63,11 +64,11 @@ export default function TTT() {
   const [closeModalVisible, setCloseModalVisible] = useState<boolean>(false)
   const [connection, setConnection] = useState<boolean>(true)
   const [isPlayerTurn, setIsPlayerTurn] = useState(true)
+  const [ready, setReady] = useState<boolean>(false)
   const [winnerText, setWinnerText] = useState<string | null>(null)
   const [winner, setWinner] = useState<string | null>(null)
   const [board, setBoard] = useState(initialBoard)
   const [loaded, setLoaded] = useState(false)
-  const [pointsAdded, setPointsAdded] = useState<boolean>(false)
   const [btnScales] = useState(() =>
     initialBoard.map(() => new Animated.Value(1))
   )
@@ -83,8 +84,6 @@ export default function TTT() {
 
   const sheetRef = useRef<BottomSheet>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
-  const myId = useRef<string | null>(null)
-  const roomId = useRef<string | null>(null)
 
   const handlePressIn = (index: number) => {
     Animated.spring(btnScales[index], {
@@ -160,46 +159,7 @@ export default function TTT() {
   )
 
   useEffect(() => {
-    // Check the winner
-    const lines = [
-      [0, 1, 2],
-      [3, 4, 5],
-      [6, 7, 8],
-      [0, 3, 6],
-      [1, 4, 7],
-      [2, 5, 8],
-      [0, 4, 8],
-      [2, 4, 6],
-    ]
-
-    for (let i = 0; i < lines.length; i++) {
-      const [a, b, c] = lines[i]
-      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-        setWinner(board[a])
-
-        if (mode === "offline") {
-          setWinnerText(`${board[a]} ${t("win")}`)
-        } else {
-          board[a] === myId.current && setWinnerText(t("you_win"))
-          board[a] !== myId.current && setWinnerText(t("you_loose"))
-
-          if (mode === "online") {
-            Fire.updateGame("ttt", roomId.current!, {
-              gameStatus: GameStatus.STOPPED,
-            })
-          }
-
-          if (!pointsAdded) sumWins()
-        }
-
-        return
-      }
-    }
-
-    if (board.every((square) => square)) {
-      setWinner("draw")
-      setWinnerText(t("draw"))
-    }
+    checkWinner()
   }, [board])
 
   useEffect(() => {
@@ -208,14 +168,16 @@ export default function TTT() {
     let connectionUnsubscribe: (() => void) | undefined
     let backHandler: NativeEventSubscription
     let currentGameData: TTTModel
+    console.log(mode, id)
 
     if (mode === "online") {
       gameId = sixDigit()
       Fire.setGame("ttt", gameId, {
         gameId,
-        round: 1,
+        round: 0,
         currentPlayer: getRandomXO(),
         gameStatus: GameStatus.CREATED,
+        playersReady: 1,
         players: [
           {
             id: getAuth().currentUser?.uid,
@@ -255,7 +217,6 @@ export default function TTT() {
     }
 
     if (mode === "offline" || mode === "computer") {
-      myId.current = POS.X
       const backPress = (): boolean => {
         return handleBackPress(currentGameData)
       }
@@ -265,58 +226,40 @@ export default function TTT() {
       return
     }
 
-    if (mode !== "offline" && mode !== "computer") {
-      unsubscribe = Fire.onGameChange("ttt", gameId, (data) => {
-        if (!data) {
-          if (mode === "join") {
-            ToastAndroid.showWithGravity(
-              t("host_closed_game"),
-              ToastAndroid.SHORT,
-              ToastAndroid.CENTER
-            )
-            navigation.goBack()
-            if (timerRef.current) clearInterval(timerRef.current)
-          }
-          return
+    unsubscribe = Fire.onGameChange("ttt", gameId, (data) => {
+      if (!data) {
+        if (mode === "join") {
+          ToastAndroid.showWithGravity(
+            t("host_closed_game"),
+            ToastAndroid.SHORT,
+            ToastAndroid.CENTER
+          )
+          navigation.goBack()
+          if (timerRef.current) clearInterval(timerRef.current)
         }
+        return
+      }
 
-        currentGameData = data as TTTModel
-        roomId.current = currentGameData.gameId
-        setGameData(currentGameData)
-        setBoard(currentGameData.filledPos)
-        setIsPlayerTurn(currentGameData?.currentPlayer === POS.X)
-        setTitleByGameStatus(connection ? currentGameData.gameStatus : 3)
+      currentGameData = data as TTTModel
+      setGameData(currentGameData)
+      setBoard(currentGameData.filledPos)
+      setTitleByGameStatus(connection ? currentGameData.gameStatus : 3)
 
-        if (currentGameData.gameStatus === GameStatus.CREATED) {
-          if (mode === "online" && !myId.current) {
-            currentGameData.players.forEach((p) => {
-              if (getAuth().currentUser?.uid === p.id) {
-                myId.current = p.pos
-              }
-            })
-          }
+      if (currentGameData.gameStatus === GameStatus.CREATED) {
+        setReady(false)
+        handleReset()
+      }
 
-          if (mode === "join" && !myId.current) {
-            currentGameData.players.forEach((p) => {
-              if (p.id === currentGameData.host) {
-                myId.current = p.pos === POS.X ? POS.O : POS.X
-              }
-            })
-          }
+      if (currentGameData.gameStatus === GameStatus.STOPPED) {
+        checkWinner()
+      }
 
-          if (pointsAdded) setPointsAdded(false)
-        }
+      const backPress = (): boolean => {
+        return handleBackPress(currentGameData)
+      }
 
-        const backPress = (): boolean => {
-          return handleBackPress(currentGameData)
-        }
-
-        backHandler = BackHandler.addEventListener(
-          "hardwareBackPress",
-          backPress
-        )
-      })
-    }
+      backHandler = BackHandler.addEventListener("hardwareBackPress", backPress)
+    })
 
     connectionUnsubscribe = NetInfo.addEventListener((state) => {
       setConnection(state.isConnected ?? false)
@@ -334,8 +277,6 @@ export default function TTT() {
         connectionUnsubscribe()
         connectionUnsubscribe = undefined
       }
-
-      roomId.current = null
 
       if (timerRef.current) clearInterval(timerRef.current)
       if (backHandler) backHandler.remove()
@@ -357,7 +298,7 @@ export default function TTT() {
   }, [])
 
   const getRandomXO = (): string => {
-    const values = [POS.X, POS.O]
+    const values = ["X", "O"]
     const randomIndex = Math.floor(Math.random() * values.length)
     return values[randomIndex]
   }
@@ -365,10 +306,10 @@ export default function TTT() {
   const setTitleByGameStatus = (gameStatus: number | undefined) => {
     switch (gameStatus) {
       case GameStatus.CREATED:
-        setTitle("Tic Tac Toe")
+        setTitle(t("waiting_players"))
         break
       case GameStatus.IN_PROGRESS:
-        setTitle("Tic Tac Toe")
+        setTitle(t("fill_spaces"))
         break
       case GameStatus.STOPPED:
         setTitle("STOP!")
@@ -376,6 +317,40 @@ export default function TTT() {
       case 3:
         setTitle(t("connection_lost"))
         break
+    }
+  }
+
+  const checkWinner = () => {
+    const lines = [
+      [0, 1, 2, 3],
+      [4, 5, 6, 7],
+      [8, 9, 10, 11],
+      [12, 13, 14, 15],
+      [0, 4, 8, 12],
+      [1, 5, 9, 13],
+      [2, 6, 10, 14],
+      [3, 7, 11, 15],
+      [0, 5, 10, 15],
+      [3, 6, 9, 12],
+    ]
+
+    for (let i = 0; i < lines.length; i++) {
+      const [a, b, c, d] = lines[i]
+      if (
+        board[a] &&
+        board[a] === board[b] &&
+        board[a] === board[c] &&
+        board[a] === board[d]
+      ) {
+        setWinner(board[a])
+        setWinnerText(`${board[a]} Win!`)
+        return
+      }
+    }
+
+    if (board.every((square) => square)) {
+      setWinner("draw")
+      setWinnerText("Draw!")
     }
   }
 
@@ -400,34 +375,17 @@ export default function TTT() {
   }
 
   const handleSquarePress = (index: number) => {
-    if (winner) return
-
-    if (mode === "offline" && !board[index]) {
+    if (!board[index] && !winner) {
       const newBoard = [...board]
-      newBoard[index] = isPlayerTurn ? POS.X : POS.O
+      newBoard[index] = isPlayerTurn ? "X" : "O"
       setBoard(newBoard)
       setIsPlayerTurn(!isPlayerTurn)
     }
+  }
 
-    if (mode !== "offline" && !board[index]) {
-      if (gameData?.currentPlayer !== myId.current) {
-        vibrationEnabled && Vibration.vibrate(100)
-        ToastAndroid.showWithGravity(
-          t("not_your_turn"),
-          ToastAndroid.SHORT,
-          ToastAndroid.CENTER
-        )
-        return
-      }
-
-      const newBoard = [...board]
-      newBoard[index] = gameData?.currentPlayer
-      setBoard(newBoard)
-
-      Fire.updateGame("ttt", gameData.gameId, {
-        currentPlayer: gameData?.currentPlayer === POS.X ? POS.O : POS.X,
-        filledPos: newBoard,
-      })
+  const handlePress = (flag: string) => {
+    if (flag === "restart") {
+      handleReset()
     }
   }
 
@@ -437,14 +395,10 @@ export default function TTT() {
     setWinner(null)
     setWinnerText(null)
 
-    if (mode === "offline") return
-    if (!gameData) return
+    if (mode === "offline" || mode === "join") return
 
-    Fire.updateGame("ttt", roomId.current!, {
-      currentPlayer: getRandomXO(),
+    Fire.updateGame("ttt", id, {
       filledPos: initialBoard,
-      gameStatus: GameStatus.CREATED,
-      round: gameData.round + 1,
     })
   }
 
@@ -459,30 +413,6 @@ export default function TTT() {
     if (gameData?.gameStatus === GameStatus.IN_PROGRESS) return
 
     sheetRef.current?.expand()
-  }
-
-  const sumWins = () => {
-    if (!gameData) return
-    if (!getAuth().currentUser?.uid) return
-    if (winner !== myId.current) return
-
-    const userId = getAuth().currentUser?.uid
-
-    const updatedPlayers = gameData.players.map((p) => {
-      if (p.id === userId) {
-        return {
-          ...p,
-          wins: p.wins + 1,
-        }
-      }
-      return p
-    })
-
-    Fire.updateGame("ttt", gameData.gameId, {
-      players: updatedPlayers,
-    })
-
-    setPointsAdded(true)
   }
 
   const copyRoomCode = () => {
@@ -605,7 +535,7 @@ export default function TTT() {
             fontSize: Theme.sizes.h3,
           }}
         >
-          {t("turn")}: {isPlayerTurn ? POS.X : POS.O}
+          {isPlayerTurn ? "X" : "O"} Turn
         </Text>
       </View>
 
@@ -625,7 +555,7 @@ export default function TTT() {
               key={index}
               style={{
                 transform: [{ scale: btnScales[index] }],
-                width: "30%",
+                width: "22%",
                 aspectRatio: 1,
                 borderRadius: 18,
                 overflow: "hidden",
@@ -650,7 +580,7 @@ export default function TTT() {
                 <Text
                   style={{
                     color:
-                      board[index] === POS.X
+                      board[index] === "X"
                         ? Theme.colors.accent
                         : Theme.colors.text,
                     fontFamily: Theme.fonts.onestBold,
@@ -678,7 +608,7 @@ export default function TTT() {
           style={{
             color: Theme.colors.text,
             fontFamily: Theme.fonts.onestBold,
-            fontSize: 46,
+            fontSize: 56,
           }}
         >
           {winnerText}
@@ -699,10 +629,7 @@ export default function TTT() {
               {t("round")}: {gameData?.round === 0 ? 1 : (gameData?.round ?? 0)}
             </Text>
             <Text style={styles.texts}>
-              {t("you")}:{" "}
-              {mode === "offline"
-                ? `${isPlayerTurn ? POS.X : POS.O}`
-                : myId.current}
+              {t("letter")}: {isPlayerTurn ? "X" : "O"}
             </Text>
           </View>
         )}
@@ -715,10 +642,30 @@ export default function TTT() {
             alignItems: "center",
           }}
         >
-          {winner && (
+          {gameData?.gameStatus !== GameStatus.IN_PROGRESS && (
+            <>
+              {mode === "online" && (
+                <PlayingButton
+                  flag="play"
+                  onPress={() => handlePress("play")}
+                  icon={<PlayIcon size={30} />}
+                />
+              )}
+
+              {mode === "join" && !ready && (
+                <PlayingButton
+                  flag="ready"
+                  onPress={() => handlePress("ready")}
+                  icon={<CheckIcon size={30} />}
+                />
+              )}
+            </>
+          )}
+
+          {(mode === "offline" || mode === "computer") && (
             <PlayingButton
               flag="restart"
-              onPress={() => handleReset()}
+              onPress={() => handlePress("restart")}
               icon={<RestartIcon size={30} />}
             />
           )}

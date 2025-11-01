@@ -98,7 +98,7 @@ export const LoginForm = () => {
         return setError(t("error_login_username_min"))
       }
 
-      if (displayName.trim().length > 20) {
+      if (displayName.trim().length > 10) {
         Vibration.vibrate(100)
         return setError(t("error_login_username_max"))
       }
@@ -156,7 +156,6 @@ export const LoginForm = () => {
     try {
       if (signInForm) {
         await signInWithEmailAndPassword(auth, email, password)
-        console.log("Signed in!")
       } else {
         if (password === repeatPassword) {
           await createUserWithEmailAndPassword(auth, email, password).then(

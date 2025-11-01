@@ -14,6 +14,8 @@ interface FocusInputProps {
   capitalize?: "none" | "sentences" | "words" | "characters"
   value?: string
   editable?: boolean
+  returnKeyType?: any
+  onSubmitEditing?: () => void
 }
 
 export const FocusInput = ({
@@ -23,6 +25,8 @@ export const FocusInput = ({
   capitalize,
   value,
   editable = true,
+  onSubmitEditing,
+  ...props
 }: FocusInputProps) => {
   const [isFocused, setIsFocused] = useState(false)
   const borderAnim = useRef(new Animated.Value(0)).current
@@ -67,6 +71,8 @@ export const FocusInput = ({
         value={value}
         editable={editable}
         style={[styles.input, !editable && { color: Theme.colors.gray }]}
+        onSubmitEditing={onSubmitEditing}
+        {...props}
       />
     </Animated.View>
   )
