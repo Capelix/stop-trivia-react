@@ -85,6 +85,7 @@ export default function TTT() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const myId = useRef<string | null>(null)
   const roomId = useRef<string | null>(null)
+  const backHandlerRef = useRef<NativeEventSubscription | null>(null)
 
   const handlePressIn = (index: number) => {
     Animated.spring(btnScales[index], {
@@ -113,49 +114,27 @@ export default function TTT() {
     ],
   })
 
-  useEffect(() => {
-    const unsubscribeLoaded = interstitial.addAdEventListener(
-      AdEventType.LOADED,
-      () => {
-        setLoaded(true)
-        interstitial.show()
-      }
-    )
-
-    const unsubscribeOpened = interstitial.addAdEventListener(
-      AdEventType.OPENED,
-      () => {
-        if (Platform.OS === "ios") {
-          StatusBar.setHidden(true)
-        }
-      }
-    )
-
-    const unsubscribeClosed = interstitial.addAdEventListener(
-      AdEventType.CLOSED,
-      () => {
-        if (Platform.OS === "ios") {
-          StatusBar.setHidden(false)
-        }
-      }
-    )
-
-    interstitial.load()
-
-    return () => {
-      unsubscribeLoaded()
-      unsubscribeOpened()
-      unsubscribeClosed()
-    }
-  }, [])
-
   useFocusEffect(
     useCallback(() => {
       const loadSettings = async () => {
         const vibrationValue = await getItem("vibration")
         setVibrationEnabled(parseBoolean(vibrationValue))
       }
+
+      const backPress = () => handleBackPress()
+      backHandlerRef.current = BackHandler.addEventListener(
+        "hardwareBackPress",
+        backPress
+      )
+
       loadSettings()
+
+      return () => {
+        if (backHandlerRef.current) {
+          backHandlerRef.current.remove()
+          backHandlerRef.current = null
+        }
+      }
     }, [])
   )
 
@@ -208,6 +187,40 @@ export default function TTT() {
     let connectionUnsubscribe: (() => void) | undefined
     let backHandler: NativeEventSubscription
     let currentGameData: TTTModel
+
+    connectionUnsubscribe = NetInfo.addEventListener((state) => {
+      setConnection(state.isConnected ?? false)
+
+      if (!state.isConnected) setLoaded(true)
+    })
+
+    const unsubscribeLoaded = interstitial.addAdEventListener(
+      AdEventType.LOADED,
+      () => {
+        setLoaded(true)
+        interstitial.show()
+      }
+    )
+
+    const unsubscribeOpened = interstitial.addAdEventListener(
+      AdEventType.OPENED,
+      () => {
+        if (Platform.OS === "ios") {
+          StatusBar.setHidden(true)
+        }
+      }
+    )
+
+    const unsubscribeClosed = interstitial.addAdEventListener(
+      AdEventType.CLOSED,
+      () => {
+        if (Platform.OS === "ios") {
+          StatusBar.setHidden(false)
+        }
+      }
+    )
+
+    interstitial.load()
 
     if (mode === "online") {
       gameId = sixDigit()
@@ -318,13 +331,7 @@ export default function TTT() {
       })
     }
 
-    connectionUnsubscribe = NetInfo.addEventListener((state) => {
-      setConnection(state.isConnected ?? false)
-    })
-
     return () => {
-      console.log("Cleaning up...")
-
       if (unsubscribe) {
         unsubscribe()
         unsubscribe = undefined
@@ -334,6 +341,10 @@ export default function TTT() {
         connectionUnsubscribe()
         connectionUnsubscribe = undefined
       }
+
+      unsubscribeLoaded()
+      unsubscribeOpened()
+      unsubscribeClosed()
 
       roomId.current = null
 
@@ -450,6 +461,12 @@ export default function TTT() {
 
   const handleOnExit = () => {
     setCloseModalVisible(false)
+    
+    if (backHandlerRef.current) {
+      backHandlerRef.current.remove()
+      backHandlerRef.current = null
+    }
+    
     navigation.goBack()
   }
 

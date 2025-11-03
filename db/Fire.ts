@@ -35,7 +35,7 @@ class Fire {
       currentPlayer: "X",
       gameStatus: GameStatus.CREATED,
       playersReady: 1,
-      players: [{ id: "", name: "", points: 0, photoURL: "" }] as TTTPlayer[],
+      players: [{ id: "", name: "", wins: 0, photoURL: "" }] as TTTPlayer[],
       filledPos: ["", "", "", "", "", "", "", "", ""],
       host: "no-host",
       startTime: Date.now(),
@@ -104,6 +104,24 @@ class Fire {
       const data = snap.data()
       const players = data?.players.map((p: StopPlayer) =>
         p.id === userId ? { ...p, inputs } : p
+      )
+      tx.update(gameRef, { players })
+    })
+  }
+
+  updatePlayerPoints = async (
+    collection: string,
+    gameId: string,
+    userId: string,
+    pointsToAdd: number
+  ) => {
+    const gameRef = doc(db, collection, gameId)
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(gameRef)
+      if (!snap.exists()) return
+      const data = snap.data()
+      const players = data?.players.map((p: StopPlayer) =>
+        p.id === userId ? { ...p, points: p.points + pointsToAdd } : p
       )
       tx.update(gameRef, { players })
     })

@@ -15,6 +15,7 @@ import {
   Vibration,
   Linking,
   Platform,
+  ScrollView,
 } from "react-native"
 import { GOOGLE_AUTH_WEB_CLIENT_ID } from "@/constants/GoogleAuth"
 import { Theme } from "@/constants/Theme"
@@ -56,14 +57,25 @@ export const LoginForm = () => {
   const { t } = useTranslation()
 
   const googleSignin = async () => {
+    setGoogleLoading(true)
+
     try {
-      setGoogleLoading(true)
       GoogleSignin.configure({
         offlineAccess: false,
         webClientId: GOOGLE_AUTH_WEB_CLIENT_ID,
         scopes: ["profile", "email"],
+        forceCodeForRefreshToken: true,
       })
+
+      try {
+        await GoogleSignin.signOut()
+        await GoogleSignin.revokeAccess()
+      } catch (e) {
+        console.log(e)
+      }
+
       await GoogleSignin.hasPlayServices()
+
       const signInResult = await GoogleSignin.signIn()
       const idToken = signInResult.data?.idToken
       const googleCredentials = GoogleAuthProvider.credential(idToken)
@@ -216,7 +228,7 @@ export const LoginForm = () => {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior="padding"
       style={styles.wrapper}
       keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
     >
@@ -244,109 +256,81 @@ export const LoginForm = () => {
           </View>
         ))}
 
-      <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()}>
-        <View style={styles.container}>
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              marginBottom: 28,
-            }}
-          >
-            <LottieView
-              source={ic}
-              autoPlay
-              loop={false}
-              duration={3000}
+      <Pressable
+        style={{ flex: 1, width: "100%", alignItems: "center" }}
+        onPress={() => Keyboard.dismiss()}
+      >
+        <ScrollView
+          contentContainerStyle={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.container}>
+            <View
               style={{
-                width: 42,
-                height: 42,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 28,
               }}
-            />
+            >
+              <LottieView
+                source={ic}
+                autoPlay
+                loop={false}
+                duration={3000}
+                style={{
+                  width: 42,
+                  height: 42,
+                }}
+              />
 
-            <Text style={styles.title}>top Trivia</Text>
-          </View>
+              <Text style={styles.title}>top Trivia</Text>
+            </View>
 
-          {!signInForm && (
+            {!signInForm && (
+              <View style={styles.field}>
+                <View style={styles.iconLeft}>
+                  <UserIcon color={Theme.colors.gray} />
+                </View>
+
+                <TextInput
+                  style={styles.input}
+                  placeholder={t("username")}
+                  placeholderTextColor={Theme.colors.darkGray}
+                  keyboardType="default"
+                  autoCapitalize="none"
+                  autoComplete="name-given"
+                  value={displayName}
+                  onChangeText={setDisplayName}
+                  returnKeyType="next"
+                  accessibilityLabel="Username"
+                  importantForAutofill="yes"
+                  cursorColor={Theme.colors.accent}
+                />
+              </View>
+            )}
+
             <View style={styles.field}>
               <View style={styles.iconLeft}>
-                <UserIcon color={Theme.colors.gray} />
+                <MailIcon color={Theme.colors.gray} />
               </View>
-
               <TextInput
                 style={styles.input}
-                placeholder={t("username")}
+                placeholder={t("email")}
                 placeholderTextColor={Theme.colors.darkGray}
-                keyboardType="default"
+                keyboardType="email-address"
                 autoCapitalize="none"
-                autoComplete="name-given"
-                value={displayName}
-                onChangeText={setDisplayName}
+                autoComplete="email"
+                value={email}
+                onChangeText={setEmail}
                 returnKeyType="next"
-                accessibilityLabel="Username"
+                accessibilityLabel="Email"
                 importantForAutofill="yes"
                 cursorColor={Theme.colors.accent}
               />
             </View>
-          )}
 
-          <View style={styles.field}>
-            <View style={styles.iconLeft}>
-              <MailIcon color={Theme.colors.gray} />
-            </View>
-            <TextInput
-              style={styles.input}
-              placeholder={t("email")}
-              placeholderTextColor={Theme.colors.darkGray}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              value={email}
-              onChangeText={setEmail}
-              returnKeyType="next"
-              accessibilityLabel="Email"
-              importantForAutofill="yes"
-              cursorColor={Theme.colors.accent}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <View style={styles.iconLeft}>
-              <LockIcon color={Theme.colors.gray} />
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder={t("password")}
-              placeholderTextColor={Theme.colors.darkGray}
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-              autoCapitalize="none"
-              returnKeyType="done"
-              onSubmitEditing={handleSignin}
-              accessibilityLabel="Password"
-              cursorColor={Theme.colors.accent}
-            />
-
-            <Pressable
-              onPress={() => setShowPassword((s) => !s)}
-              style={styles.iconRight}
-              accessibilityRole="button"
-              accessibilityLabel={
-                showPassword ? "Hide password" : "Show password"
-              }
-            >
-              {showPassword ? (
-                <EyeOffIcon color={Theme.colors.gray} />
-              ) : (
-                <EyeIcon color={Theme.colors.gray} />
-              )}
-            </Pressable>
-          </View>
-
-          {!signInForm && (
             <View style={styles.field}>
               <View style={styles.iconLeft}>
                 <LockIcon color={Theme.colors.gray} />
@@ -354,11 +338,11 @@ export const LoginForm = () => {
 
               <TextInput
                 style={styles.input}
-                placeholder={t("repeat_password")}
+                placeholder={t("password")}
                 placeholderTextColor={Theme.colors.darkGray}
                 secureTextEntry={!showPassword}
-                value={repeatPassword}
-                onChangeText={setRepeatPassword}
+                value={password}
+                onChangeText={setPassword}
                 autoCapitalize="none"
                 returnKeyType="done"
                 onSubmitEditing={handleSignin}
@@ -381,102 +365,139 @@ export const LoginForm = () => {
                 )}
               </Pressable>
             </View>
-          )}
 
-          <View style={styles.row}>
-            <Text style={styles.error}>{error}</Text>
+            {!signInForm && (
+              <View style={styles.field}>
+                <View style={styles.iconLeft}>
+                  <LockIcon color={Theme.colors.gray} />
+                </View>
 
-            {signInForm && (
-              <Pressable onPress={handleForgot}>
-                <Text style={styles.forgotText}>{t("forgot")}</Text>
-              </Pressable>
+                <TextInput
+                  style={styles.input}
+                  placeholder={t("repeat_password")}
+                  placeholderTextColor={Theme.colors.darkGray}
+                  secureTextEntry={!showPassword}
+                  value={repeatPassword}
+                  onChangeText={setRepeatPassword}
+                  autoCapitalize="none"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSignin}
+                  accessibilityLabel="Password"
+                  cursorColor={Theme.colors.accent}
+                />
+
+                <Pressable
+                  onPress={() => setShowPassword((s) => !s)}
+                  style={styles.iconRight}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    showPassword ? "Hide password" : "Show password"
+                  }
+                >
+                  {showPassword ? (
+                    <EyeOffIcon color={Theme.colors.gray} />
+                  ) : (
+                    <EyeIcon color={Theme.colors.gray} />
+                  )}
+                </Pressable>
+              </View>
             )}
-          </View>
 
-          <Animated.View
-            style={{ transform: [{ scale: btnScale }], width: "100%" }}
-          >
-            <Pressable
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-              onPress={handleSignin}
-              style={({ pressed }) => [
-                styles.submit,
-                pressed && { opacity: 0.9 },
-                loading && { opacity: 0.8 },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Sign in"
-            >
-              {loading ? (
-                <ActivityIndicator color={Theme.colors.text} />
-              ) : (
-                <Text style={styles.submitText}>
-                  {signInForm ? t("sign_in") : t("sign_up")}
-                </Text>
+            <View style={styles.row}>
+              <Text style={styles.error}>{error}</Text>
+
+              {signInForm && (
+                <Pressable onPress={handleForgot}>
+                  <Text style={styles.forgotText}>{t("forgot")}</Text>
+                </Pressable>
               )}
-            </Pressable>
-          </Animated.View>
+            </View>
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              {signInForm ? t("sign_up_question") : t("sign_in_question")}
-            </Text>
-
-            <Pressable
-              style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
-              onPress={handleChangeForm}
+            <Animated.View
+              style={{ transform: [{ scale: btnScale }], width: "100%" }}
             >
-              <Text style={styles.signupText}>
-                {signInForm ? t("sign_up") : t("sign_in")}
-              </Text>
-            </Pressable>
-          </View>
+              <Pressable
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
+                onPress={handleSignin}
+                style={({ pressed }) => [
+                  styles.submit,
+                  pressed && { opacity: 0.9 },
+                  loading && { opacity: 0.8 },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Sign in"
+              >
+                {loading ? (
+                  <ActivityIndicator color={Theme.colors.text} />
+                ) : (
+                  <Text style={styles.submitText}>
+                    {signInForm ? t("sign_in") : t("sign_up")}
+                  </Text>
+                )}
+              </Pressable>
+            </Animated.View>
 
-          <View>
-            <Text
+            <View style={styles.footer}>
+              <Text style={styles.footerText}>
+                {signInForm ? t("sign_up_question") : t("sign_in_question")}
+              </Text>
+
+              <Pressable
+                style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}
+                onPress={handleChangeForm}
+              >
+                <Text style={styles.signupText}>
+                  {signInForm ? t("sign_up") : t("sign_in")}
+                </Text>
+              </Pressable>
+            </View>
+
+            <View>
+              <Text
+                style={{
+                  textAlign: "center",
+                  color: Theme.colors.gray,
+                  marginVertical: 24,
+                }}
+              >
+                {t("or_sign_in_with")}
+              </Text>
+
+              <Pressable
+                onPress={handleGoogleSignIn}
+                style={({ pressed }) => [
+                  styles.googleBtn,
+                  pressed && { opacity: 0.9 },
+                  loading && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={[styles.googleText, { color: "#4285F4" }]}>G</Text>
+                <Text style={[styles.googleText, { color: "#DB4437" }]}>o</Text>
+                <Text style={[styles.googleText, { color: "#F4B400" }]}>o</Text>
+                <Text style={[styles.googleText, { color: "#4285F4" }]}>g</Text>
+                <Text style={[styles.googleText, { color: "#0F9D58" }]}>l</Text>
+                <Text style={[styles.googleText, { color: "#DB4437" }]}>e</Text>
+              </Pressable>
+            </View>
+
+            <View
               style={{
-                textAlign: "center",
-                color: Theme.colors.gray,
-                marginVertical: 24,
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 4,
+                alignSelf: "stretch",
               }}
             >
-              {t("or_sign_in_with")}
-            </Text>
-
-            <Pressable
-              onPress={handleGoogleSignIn}
-              style={({ pressed }) => [
-                styles.googleBtn,
-                pressed && { opacity: 0.9 },
-                loading && { opacity: 0.8 },
-              ]}
-            >
-              <Text style={[styles.googleText, { color: "#4285F4" }]}>G</Text>
-              <Text style={[styles.googleText, { color: "#DB4437" }]}>o</Text>
-              <Text style={[styles.googleText, { color: "#F4B400" }]}>o</Text>
-              <Text style={[styles.googleText, { color: "#4285F4" }]}>g</Text>
-              <Text style={[styles.googleText, { color: "#0F9D58" }]}>l</Text>
-              <Text style={[styles.googleText, { color: "#DB4437" }]}>e</Text>
-            </Pressable>
+              <Text
+                onPress={() => Linking.openURL("https://rikirilis.com/privacy")}
+                style={styles.footerPolicy}
+              >
+                {t("privacy_policy")}
+              </Text>
+            </View>
           </View>
-
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "center",
-              gap: 4,
-              alignSelf: "stretch",
-            }}
-          >
-            <Text
-              onPress={() => Linking.openURL("https://rikirilis.com/privacy")}
-              style={styles.footerPolicy}
-            >
-              {t("privacy_policy")}
-            </Text>
-          </View>
-        </View>
+        </ScrollView>
       </Pressable>
     </KeyboardAvoidingView>
   )
@@ -494,7 +515,8 @@ const styles = StyleSheet.create({
     padding: 12,
     flex: 1,
     width: "auto",
-    maxWidth: 350,
+    minWidth: 300,
+    maxWidth: 400,
     justifyContent: "center",
   },
   title: {

@@ -9,20 +9,13 @@ interface Props {
 export function Screen({ children, padding }: Props) {
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={{ flex: 1 }}
+      behavior="padding"
+      style={{ flex: 1, backgroundColor: Theme.colors.background,
+        padding: padding ?? 16,
+        width: "100%", }}
       keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 0}
     >
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: Theme.colors.background,
-          padding: padding ?? 16,
-          width: "100%",
-        }}
-      >
         {children}
-      </View>
     </KeyboardAvoidingView>
   )
 }

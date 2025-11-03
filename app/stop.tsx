@@ -14,6 +14,9 @@ import {
   Animated,
   Platform,
   StatusBar,
+  ScrollView,
+  Modal,
+  TouchableWithoutFeedback,
 } from "react-native"
 import {
   Stack,
@@ -66,8 +69,6 @@ export default function Stop() {
   const [title, setTitle] = useState<string | null>(null)
   const [countdown, setCountdown] = useState<number | string>(3)
   const [timeLeft, setTimeLeft] = useState<number>(300)
-  const [letter, setLetter] = useState<string>("-")
-  const [vibrationEnabled, setVibrationEnabled] = useState<boolean>()
   const [closeModalVisible, setCloseModalVisible] = useState<boolean>(false)
   const [restartModalVisible, setRestartModalVisible] = useState<boolean>(false)
   const [ready, setReady] = useState<boolean>(false)
@@ -77,6 +78,8 @@ export default function Stop() {
   const [inputsPlayer, setInputsPlayer] = useState<StopPlayer | null>(null)
   const [inputsModalVisible, setInputsModalVisible] = useState(false)
   const [loaded, setLoaded] = useState(false)
+  const [idModalVisible, setIdModalVisible] = useState<boolean>(true)
+  const [copied, setCopied] = useState<boolean>(false)
   const [inputs, setInputs] = useState({
     name: "",
     lastName: "",
@@ -96,6 +99,8 @@ export default function Stop() {
   const countdownStarted = useRef(false)
   const currentInputsRef = useRef(inputs)
   const backHandlerRef = useRef<NativeEventSubscription | null>(null)
+  const playersCount = useRef<number>(1)
+  const vibrationEnabled = useRef<boolean>(undefined)
 
   const navigation = useNavigation()
   const { getItem } = useStorage()
@@ -119,7 +124,48 @@ export default function Stop() {
     ],
   })
 
+  useFocusEffect(
+    useCallback(() => {
+      const loadSettings = async () => {
+        const vibrationValue = await getItem("vibration")
+        vibrationEnabled.current = parseBoolean(vibrationValue)
+      }
+
+      const backPress = () => handleBackPress()
+      backHandlerRef.current = BackHandler.addEventListener(
+        "hardwareBackPress",
+        backPress
+      )
+
+      loadSettings()
+
+      return () => {
+        if (backHandlerRef.current) {
+          backHandlerRef.current.remove()
+          backHandlerRef.current = null
+        }
+      }
+    }, [gameData, mode, vibrationEnabled.current])
+  )
+
   useEffect(() => {
+    currentInputsRef.current = inputs
+  }, [inputs])
+
+  useEffect(() => {
+    let gameId = id
+    let gameTime = +time
+    let unsubscribe: (() => void) | undefined
+    let connectionUnsubscribe: (() => void) | undefined
+    let currentGameData: StopModel
+    setTimeLeft(gameTime)
+
+    connectionUnsubscribe = NetInfo.addEventListener((state) => {
+      setConnection(state.isConnected ?? false)
+
+      if (!state.isConnected) setLoaded(true)
+    })
+
     const unsubscribeLoaded = interstitial.addAdEventListener(
       AdEventType.LOADED,
       () => {
@@ -149,52 +195,6 @@ export default function Stop() {
     )
 
     interstitial.load()
-
-    return () => {
-      unsubscribeLoaded()
-      unsubscribeOpened()
-      unsubscribeClosed()
-    }
-  }, [])
-
-  useFocusEffect(
-    useCallback(() => {
-      const loadSettings = async () => {
-        const vibrationValue = await getItem("vibration")
-        setVibrationEnabled(parseBoolean(vibrationValue))
-      }
-      loadSettings()
-    }, [])
-  )
-
-  useFocusEffect(
-    useCallback(() => {
-      const backPress = () => handleBackPress()
-      backHandlerRef.current = BackHandler.addEventListener(
-        "hardwareBackPress",
-        backPress
-      )
-
-      return () => {
-        if (backHandlerRef.current) {
-          backHandlerRef.current.remove()
-          backHandlerRef.current = null
-        }
-      }
-    }, [gameData, mode, vibrationEnabled])
-  )
-
-  useEffect(() => {
-    currentInputsRef.current = inputs
-  }, [inputs])
-
-  useEffect(() => {
-    let gameId = id
-    let gameTime = +time
-    let unsubscribe: (() => void) | undefined
-    let connectionUnsubscribe: (() => void) | undefined
-    let currentGameData: StopModel
-    setTimeLeft(gameTime)
 
     if (mode === "online") {
       gameId = sixDigit()
@@ -263,6 +263,11 @@ export default function Stop() {
         setGameData(currentGameData)
         setTitleByGameStatus(connection ? currentGameData.gameStatus : 3)
 
+        playersCount.current = currentGameData.players.length
+        if (playersCount.current > 1) {
+          setIdModalVisible(false)
+        }
+
         if (
           currentGameData.gameStatus === GameStatus.IN_PROGRESS &&
           !countdownStarted.current
@@ -285,20 +290,20 @@ export default function Stop() {
       })
     }
 
-    connectionUnsubscribe = NetInfo.addEventListener((state) => {
-      setConnection(state.isConnected ?? false)
-    })
-
     return () => {
+      if (connectionUnsubscribe) {
+        connectionUnsubscribe()
+        connectionUnsubscribe = undefined
+      }
+
       if (unsubscribe) {
         unsubscribe()
         unsubscribe = undefined
       }
 
-      if (connectionUnsubscribe) {
-        connectionUnsubscribe()
-        connectionUnsubscribe = undefined
-      }
+      unsubscribeLoaded()
+      unsubscribeOpened()
+      unsubscribeClosed()
 
       if (timerRef.current) clearInterval(timerRef.current)
 
@@ -346,7 +351,7 @@ export default function Stop() {
       if (!gameData) return
       if (gameData.host === userId) {
         if (gameData.players.length < 2) {
-          vibrationEnabled && Vibration.vibrate(100)
+          vibrationEnabled.current && Vibration.vibrate(100)
           ToastAndroid.showWithGravity(
             t("you_are_alone"),
             ToastAndroid.SHORT,
@@ -356,7 +361,7 @@ export default function Stop() {
         }
 
         if (gameData.players.length !== gameData.playersReady) {
-          vibrationEnabled && Vibration.vibrate(100)
+          vibrationEnabled.current && Vibration.vibrate(100)
           ToastAndroid.showWithGravity(
             t("not_all_players_ready"),
             ToastAndroid.SHORT,
@@ -382,7 +387,7 @@ export default function Stop() {
 
     if (flag === "stop") {
       if (!gameData) return
-      Fire.updateGame("stop", id, {
+      Fire.updateGame("stop", gameData.gameId, {
         gameStatus: GameStatus.STOPPED,
         playersReady: 1,
       })
@@ -411,7 +416,7 @@ export default function Stop() {
   const handleCountdownSync = async (data: StopModel) => {
     let counter = 3
 
-    vibrationEnabled && Vibration.vibrate(30)
+    vibrationEnabled.current && Vibration.vibrate(30)
     setCountdown(3)
     setIsStarting(true)
     handleRestartInputs()
@@ -423,7 +428,7 @@ export default function Stop() {
     const offset = await Fire.getServerOffset(data.host)
 
     timerRef.current = setInterval(() => {
-      vibrationEnabled && Vibration.vibrate(30)
+      vibrationEnabled.current && Vibration.vibrate(30)
       counter--
       setCountdown(counter)
 
@@ -431,7 +436,6 @@ export default function Stop() {
         stopCountDown()
         handleTimer(data, offset)
         setCountdown(data.currentLetter)
-        setLetter(data.currentLetter)
         setIsStarting(false)
       }
     }, 1000)
@@ -454,13 +458,13 @@ export default function Stop() {
         startFastPulse()
       }
 
-      if (time <= 3) {
-        vibrationEnabled && Vibration.vibrate(50)
+      if (time > 0 && time <= 3) {
+        vibrationEnabled.current && Vibration.vibrate(50)
       }
 
       if (time <= 0) {
         stopTimer(data)
-        vibrationEnabled && Vibration.vibrate(1000)
+        vibrationEnabled.current && Vibration.vibrate(1000)
 
         if (data.host === userId) {
           Fire.updateGame("stop", data.gameId, {
@@ -512,6 +516,8 @@ export default function Stop() {
 
     setPoints(points + toAdd)
 
+    Fire.updatePlayerPoints("stop", gameData.gameId, userId, toAdd)
+
     const updatedPlayers = gameData.players.map((player) => {
       if (player.id === userId) {
         return {
@@ -533,7 +539,7 @@ export default function Stop() {
     if (mode === "offline") handleOnExit()
     if (!currentData) return true
     if (currentData.gameStatus === GameStatus.IN_PROGRESS) {
-      vibrationEnabled && Vibration.vibrate(100)
+      vibrationEnabled.current && Vibration.vibrate(100)
       return true
     }
 
@@ -564,7 +570,13 @@ export default function Stop() {
   }
 
   const copyRoomCode = () => {
-    vibrationEnabled && Vibration.vibrate(10)
+    vibrationEnabled.current && Vibration.vibrate(10)
+    setCopied(true)
+
+    setTimeout(() => {
+      setCopied(false)
+    }, 4000)
+
     Clipboard.setString(gameData?.gameId ?? "")
     ToastAndroid.showWithGravity(
       t("copied_clipboard"),
@@ -695,14 +707,79 @@ export default function Stop() {
           headerLeft: () => (
             <BackIcon size={34} onPress={() => handleBackPress(gameData)} />
           ),
-          headerRight: () => (
-            <CurrentPlayers
-              onPress={handlePlayers}
-              players={gameData?.players.length}
-            />
-          ),
+          headerRight: () =>
+            mode !== "offline" && (
+              <CurrentPlayers
+                onPress={handlePlayers}
+                players={gameData?.players.length}
+              />
+            ),
         }}
       />
+
+      {mode !== "offline" && (
+        <Modal
+          animationType="fade"
+          transparent
+          visible={idModalVisible}
+          onRequestClose={() => {
+            setIdModalVisible(false)
+          }}
+        >
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setIdModalVisible(false)
+            }}
+          >
+            <View style={styles.centeredView}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalView}>
+                  <Text
+                    style={{
+                      color: Theme.colors.accent,
+                      fontFamily: Theme.fonts.onestBold,
+                      fontSize: Theme.sizes.h3,
+                      alignSelf: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    {t("invite_friends")}
+                  </Text>
+
+                  <View style={{ gap: 8 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: Theme.colors.accent,
+                          fontFamily: Theme.fonts.onest,
+                          fontSize: Theme.sizes.h4,
+                        }}
+                      >
+                        {gameData?.gameId.toUpperCase()}
+                      </Text>
+
+                      <Pressable onPress={copyRoomCode}>
+                        {copied ? (
+                          <CheckIcon color={Theme.colors.accent} size={16} />
+                        ) : (
+                          <CopyIcon color={Theme.colors.accent} size={16} />
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       <CustomModal
         title={t("restart_inputs")}
@@ -733,315 +810,333 @@ export default function Stop() {
       />
 
       <Pressable style={{ flex: 1 }} onPress={() => Keyboard.dismiss()}>
-        <View style={{ flex: 1, width: "100%" }}>
-          {mode !== "offline" && (
-            <View
-              style={{
-                flexDirection: "column",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: 12,
-                paddingVertical: 24,
-              }}
-            >
-              <Animated.Text
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ flex: 1, width: "100%" }}>
+            {mode !== "offline" && (
+              <View
                 style={{
-                  color: timerColor,
-                  fontFamily: Theme.fonts.onest,
-                  fontSize: Theme.sizes.h3,
-                  transform: [{ scale: scaleAnim }],
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingVertical: 24,
                 }}
               >
-                {t("time_left")}: {formatTime(timeLeft)}
-              </Animated.Text>
-            </View>
-          )}
+                <Animated.Text
+                  style={{
+                    color: timerColor,
+                    fontFamily: Theme.fonts.onest,
+                    fontSize: Theme.sizes.h3,
+                    transform: [{ scale: scaleAnim }],
+                  }}
+                >
+                  {t("time_left")}: {formatTime(timeLeft)}
+                </Animated.Text>
+              </View>
+            )}
 
-          <View style={{ flex: 1, flexDirection: "row", gap: 18 }}>
-            <View style={styles.columns}>
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, name: text })}
-                value={inputs.name}
-                placeholder={t("name")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, country: text })}
-                value={inputs.country}
-                placeholder={t("country")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, animal: text })}
-                value={inputs.animal}
-                placeholder={t("animal")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, food: text })}
-                value={inputs.food}
-                placeholder={t("food")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, object: text })}
-                value={inputs.object}
-                placeholder={t("object")}
-              />
-            </View>
-
-            <View style={styles.columns}>
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, lastName: text })}
-                value={inputs.lastName}
-                placeholder={t("last_name")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, color: text })}
-                value={inputs.color}
-                placeholder={t("color")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, artist: text })}
-                value={inputs.artist}
-                placeholder={t("artist")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, fruit: text })}
-                value={inputs.fruit}
-                placeholder={t("fruit")}
-              />
-              <FocusInput
-                editable={
-                  mode === "offline"
-                    ? true
-                    : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
-                      !isStarting
-                }
-                onChange={(text) => setInputs({ ...inputs, profession: text })}
-                value={inputs.profession}
-                placeholder={t("profession")}
-              />
-            </View>
-          </View>
-
-          {gameData?.gameStatus !== GameStatus.STOPPED && mode !== "offline" ? (
             <View
               style={{
-                flexDirection: "column",
-                justifyContent: "center",
-                alignItems: "center",
-                gap: 12,
-                paddingVertical: 24,
-              }}
-            >
-              <Text
-                style={{
-                  color: Theme.colors.text,
-                  fontFamily: Theme.fonts.onestBold,
-                  fontSize: 96,
-                }}
-              >
-                {countdown}
-              </Text>
-            </View>
-          ) : (
-            <View
-              style={{
+                flex: 1,
                 flexDirection: "row",
-                gap: 12,
-                justifyContent: "center",
-                alignItems: "center",
+                gap: 18,
               }}
             >
-              {gameData?.players.length === 4 ||
-                (mode === "offline" && (
-                  <Pressable
-                    onPress={() => handleSumPoints(25)}
-                    style={({ pressed }) => [
-                      {
-                        backgroundColor: pressed
-                          ? Theme.colors.background2
-                          : Theme.colors.primary2,
-                      },
-                      styles.buttons,
-                    ]}
-                  >
-                    <Text style={styles.texts}>25</Text>
-                  </Pressable>
-                ))}
-
-              <Pressable
-                onPress={() => handleSumPoints(50)}
-                style={({ pressed }) => [
-                  {
-                    backgroundColor: pressed
-                      ? Theme.colors.background2
-                      : Theme.colors.primary2,
-                  },
-                  styles.buttons,
-                ]}
-              >
-                <Text style={styles.texts}>50</Text>
-              </Pressable>
-
-              {gameData?.players.length === 3 ||
-                (mode === "offline" && (
-                  <Pressable
-                    onPress={() => handleSumPoints(75)}
-                    style={({ pressed }) => [
-                      {
-                        backgroundColor: pressed
-                          ? Theme.colors.background2
-                          : Theme.colors.primary2,
-                      },
-                      styles.buttons,
-                    ]}
-                  >
-                    <Text style={styles.texts}>75</Text>
-                  </Pressable>
-                ))}
-
-              <Pressable
-                onPress={() => handleSumPoints(100)}
-                style={({ pressed }) => [
-                  {
-                    backgroundColor: pressed
-                      ? Theme.colors.background2
-                      : Theme.colors.primary2,
-                  },
-                  styles.buttons,
-                ]}
-              >
-                <Text style={styles.texts}>100</Text>
-              </Pressable>
-            </View>
-          )}
-
-          <View
-            style={{ flexDirection: "column", gap: 12, paddingVertical: 24 }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 12,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={styles.texts}>
-                {t("round")}:{" "}
-                {gameData?.round === 0 ? 1 : (gameData?.round ?? 0)}
-              </Text>
-              <Text style={styles.texts}>
-                {t("letter")}: {letter}
-              </Text>
-              <Text style={styles.texts}>
-                {t("your_points")}: {points}
-              </Text>
-            </View>
-
-            <View
-              style={{
-                flexDirection: "row",
-                gap: 12,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              {gameData?.gameStatus !== GameStatus.IN_PROGRESS && (
-                <>
-                  {mode === "online" && (
-                    <PlayingButton
-                      flag="play"
-                      onPress={() => handlePress("play")}
-                      icon={<PlayIcon size={30} />}
-                    />
-                  )}
-
-                  {mode === "join" && !ready && (
-                    <PlayingButton
-                      flag="ready"
-                      onPress={() => handlePress("ready")}
-                      icon={<CheckIcon size={30} />}
-                    />
-                  )}
-                </>
-              )}
-
-              {gameData?.gameStatus === GameStatus.IN_PROGRESS && (
-                <PlayingButton
-                  flag="stop"
-                  onPress={() => handlePress("stop")}
-                  icon={
-                    <Image
-                      source={require("@/assets/icons/ic_brand.png")}
-                      style={{ width: 30, height: 30 }}
-                    />
+              <View style={styles.columns}>
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
                   }
+                  onChange={(text) => setInputs({ ...inputs, name: text })}
+                  value={inputs.name}
+                  placeholder={t("name")}
                 />
-              )}
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, country: text })}
+                  value={inputs.country}
+                  placeholder={t("country")}
+                />
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, animal: text })}
+                  value={inputs.animal}
+                  placeholder={t("animal")}
+                />
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, food: text })}
+                  value={inputs.food}
+                  placeholder={t("food")}
+                />
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, object: text })}
+                  value={inputs.object}
+                  placeholder={t("object")}
+                />
+              </View>
 
-              {gameData?.gameStatus !== GameStatus.IN_PROGRESS && (
-                <PlayingButton
-                  flag="restart"
-                  onPress={() => handlePress("restart")}
-                  icon={<RestartIcon size={30} />}
+              <View style={styles.columns}>
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, lastName: text })}
+                  value={inputs.lastName}
+                  placeholder={t("last_name")}
                 />
-              )}
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, color: text })}
+                  value={inputs.color}
+                  placeholder={t("color")}
+                />
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, artist: text })}
+                  value={inputs.artist}
+                  placeholder={t("artist")}
+                />
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) => setInputs({ ...inputs, fruit: text })}
+                  value={inputs.fruit}
+                  placeholder={t("fruit")}
+                />
+                <FocusInput
+                  editable={
+                    mode === "offline"
+                      ? true
+                      : gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+                        !isStarting
+                  }
+                  onChange={(text) =>
+                    setInputs({ ...inputs, profession: text })
+                  }
+                  value={inputs.profession}
+                  placeholder={t("profession")}
+                />
+              </View>
+            </View>
+
+            {gameData?.gameStatus === GameStatus.IN_PROGRESS &&
+            mode !== "offline" ? (
+              <View
+                style={{
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  gap: 12,
+                  paddingTop: 12,
+                  paddingBottom: 24,
+                }}
+              >
+                <Text
+                  style={{
+                    color: Theme.colors.text,
+                    fontFamily: Theme.fonts.onestBold,
+                    fontSize: 96,
+                  }}
+                >
+                  {countdown}
+                </Text>
+              </View>
+            ) : (
+              gameData?.gameStatus === GameStatus.STOPPED && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 12,
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  {gameData?.players.length === 4 ||
+                    (mode === "offline" && (
+                      <Pressable
+                        onPress={() => handleSumPoints(25)}
+                        style={({ pressed }) => [
+                          {
+                            backgroundColor: pressed
+                              ? Theme.colors.background2
+                              : Theme.colors.primary2,
+                          },
+                          styles.buttons,
+                        ]}
+                      >
+                        <Text style={styles.texts}>25</Text>
+                      </Pressable>
+                    ))}
+
+                  <Pressable
+                    onPress={() => handleSumPoints(50)}
+                    style={({ pressed }) => [
+                      {
+                        backgroundColor: pressed
+                          ? Theme.colors.background2
+                          : Theme.colors.primary2,
+                      },
+                      styles.buttons,
+                    ]}
+                  >
+                    <Text style={styles.texts}>50</Text>
+                  </Pressable>
+
+                  {gameData?.players.length === 3 ||
+                    (mode === "offline" && (
+                      <Pressable
+                        onPress={() => handleSumPoints(75)}
+                        style={({ pressed }) => [
+                          {
+                            backgroundColor: pressed
+                              ? Theme.colors.background2
+                              : Theme.colors.primary2,
+                          },
+                          styles.buttons,
+                        ]}
+                      >
+                        <Text style={styles.texts}>75</Text>
+                      </Pressable>
+                    ))}
+
+                  <Pressable
+                    onPress={() => handleSumPoints(100)}
+                    style={({ pressed }) => [
+                      {
+                        backgroundColor: pressed
+                          ? Theme.colors.background2
+                          : Theme.colors.primary2,
+                      },
+                      styles.buttons,
+                    ]}
+                  >
+                    <Text style={styles.texts}>100</Text>
+                  </Pressable>
+                </View>
+              )
+            )}
+
+            <View
+              style={{ flexDirection: "column", gap: 12, paddingVertical: 24 }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 12,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                {mode !== "offline" && (
+                  <Text style={styles.texts}>
+                    {t("round")}:{" "}
+                    {gameData?.round === 0 ? 1 : (gameData?.round ?? 0)}
+                  </Text>
+                )}
+
+                <Text style={styles.texts}>
+                  {t("your_points")}: {points}
+                </Text>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 12,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                {gameData?.gameStatus !== GameStatus.IN_PROGRESS && (
+                  <>
+                    {mode === "online" && (
+                      <PlayingButton
+                        flag="play"
+                        onPress={() => handlePress("play")}
+                        icon={<PlayIcon size={30} />}
+                      />
+                    )}
+
+                    {mode === "join" && !ready && (
+                      <PlayingButton
+                        flag="ready"
+                        onPress={() => handlePress("ready")}
+                        icon={<CheckIcon size={30} />}
+                      />
+                    )}
+                  </>
+                )}
+
+                {gameData?.gameStatus === GameStatus.IN_PROGRESS && (
+                  <PlayingButton
+                    flag="stop"
+                    onPress={() => handlePress("stop")}
+                    icon={
+                      <Image
+                        source={require("@/assets/icons/ic_brand.png")}
+                        style={{ width: 30, height: 30 }}
+                      />
+                    }
+                  />
+                )}
+
+                {gameData?.gameStatus !== GameStatus.IN_PROGRESS && (
+                  <PlayingButton
+                    flag="restart"
+                    onPress={() => handlePress("restart")}
+                    icon={<RestartIcon size={30} />}
+                  />
+                )}
+              </View>
             </View>
           </View>
-        </View>
+        </ScrollView>
       </Pressable>
 
       <BottomSheetModal title={t("players")} ref={sheetRef}>
@@ -1065,7 +1160,11 @@ export default function Stop() {
             </Text>
 
             <Pressable onPress={copyRoomCode}>
-              <CopyIcon color={Theme.colors.accent} size={16} />
+              {copied ? (
+                <CheckIcon color={Theme.colors.accent} size={16} />
+              ) : (
+                <CopyIcon color={Theme.colors.accent} size={16} />
+              )}
             </Pressable>
           </View>
 
@@ -1209,6 +1308,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.8)",
   },
   modalBottomButtons: {
     padding: 12,
