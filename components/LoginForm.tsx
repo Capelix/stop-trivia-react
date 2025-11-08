@@ -490,7 +490,7 @@ export const LoginForm = () => {
               }}
             >
               <Text
-                onPress={() => Linking.openURL("https://rikirilis.com/privacy")}
+                onPress={() => Linking.openURL("https://capelix.dev/privacy")}
                 style={styles.footerPolicy}
               >
                 {t("privacy_policy")}

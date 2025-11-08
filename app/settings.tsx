@@ -438,7 +438,7 @@ export default function Settings() {
         />
 
         <SettingsButton
-          onPress={() => Linking.openURL("https://rikirilis.com")}
+          onPress={() => Linking.openURL("https://capelix.dev")}
           title={t("site")}
           description={t("site_desc")}
           icon={<WebIcon color={Theme.colors.darkGray} />}
@@ -447,27 +447,27 @@ export default function Settings() {
         <Divider />
 
         <SettingsButton
-          onPress={() => Linking.openURL("https://rikirilis.com/privacy")}
+          onPress={() => Linking.openURL("https://capelix.dev/privacy")}
           title={t("privacy_policy")}
           icon={<PrivacyIcon color={Theme.colors.darkGray} />}
         />
 
         <SettingsButton
-          onPress={() => Linking.openURL("https://rikirilis.com/terms")}
+          onPress={() => Linking.openURL("https://capelix.dev/terms")}
           title={t("terms_conditions")}
           icon={<ListIcon color={Theme.colors.darkGray} />}
         />
 
         <SettingsButton
           onPress={() =>
-            Linking.openURL("https://github.com/RikiRilis/stop-trivia-react")
+            Linking.openURL("https://github.com/Capelix/stop-trivia-react")
           }
           title="Github"
           icon={<GithubIcon color={Theme.colors.darkGray} />}
         />
 
         <SettingsButton
-          onPress={() => Linking.openURL("https://www.rikirilis.com/#contact")}
+          onPress={() => Linking.openURL("https://www.capelix.dev/#contact")}
           title="Feedback"
           icon={<QuestionIcon color={Theme.colors.darkGray} />}
         />
