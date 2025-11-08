@@ -1,6 +1,7 @@
 import { CustomModal } from "@/components/CustomModal"
 import {
   BackIcon,
+  CheckIcon,
   CopyIcon,
   OfflineIcon,
   RestartIcon,
@@ -38,6 +39,8 @@ import {
   ToastAndroid,
   Vibration,
   View,
+  Modal,
+  TouchableWithoutFeedback,
 } from "react-native"
 import { BottomSheetModal } from "@/components/BottomSheetModal"
 import Clipboard from "@react-native-clipboard/clipboard"
@@ -59,7 +62,6 @@ const POS = { X: "X", O: "O" }
 export default function TTT() {
   const [gameData, setGameData] = useState<TTTModel | null>(null)
   const [title, setTitle] = useState<string | null>(null)
-  const [vibrationEnabled, setVibrationEnabled] = useState<boolean>()
   const [closeModalVisible, setCloseModalVisible] = useState<boolean>(false)
   const [connection, setConnection] = useState<boolean>(true)
   const [isPlayerTurn, setIsPlayerTurn] = useState(true)
@@ -68,6 +70,8 @@ export default function TTT() {
   const [board, setBoard] = useState(initialBoard)
   const [loaded, setLoaded] = useState(false)
   const [pointsAdded, setPointsAdded] = useState<boolean>(false)
+  const [idModalVisible, setIdModalVisible] = useState<boolean>(true)
+  const [copied, setCopied] = useState<boolean>(false)
   const [btnScales] = useState(() =>
     initialBoard.map(() => new Animated.Value(1))
   )
@@ -86,6 +90,8 @@ export default function TTT() {
   const myId = useRef<string | null>(null)
   const roomId = useRef<string | null>(null)
   const backHandlerRef = useRef<NativeEventSubscription | null>(null)
+  const playersCount = useRef<number>(1)
+  const vibrationEnabled = useRef<boolean>(undefined)
 
   const handlePressIn = (index: number) => {
     Animated.spring(btnScales[index], {
@@ -118,7 +124,7 @@ export default function TTT() {
     useCallback(() => {
       const loadSettings = async () => {
         const vibrationValue = await getItem("vibration")
-        setVibrationEnabled(parseBoolean(vibrationValue))
+        vibrationEnabled.current = parseBoolean(vibrationValue)
       }
 
       const backPress = () => handleBackPress()
@@ -259,7 +265,8 @@ export default function TTT() {
               {
                 id: userId,
                 name: userName,
-                points: 0,
+                photoURL: getAuth().currentUser?.photoURL!,
+                wins: 0,
               },
             ],
           })
@@ -300,7 +307,16 @@ export default function TTT() {
         setIsPlayerTurn(currentGameData?.currentPlayer === POS.X)
         setTitleByGameStatus(connection ? currentGameData.gameStatus : 3)
 
+        playersCount.current = currentGameData.players.length
+        if (playersCount.current > 1) {
+          setIdModalVisible(false)
+        }
+
         if (currentGameData.gameStatus === GameStatus.CREATED) {
+          setWinnerText(null)
+          setWinner(null)
+          pointsAdded && setPointsAdded(false)
+
           if (mode === "online" && !myId.current) {
             currentGameData.players.forEach((p) => {
               if (getAuth().currentUser?.uid === p.id) {
@@ -316,8 +332,6 @@ export default function TTT() {
               }
             })
           }
-
-          if (pointsAdded) setPointsAdded(false)
         }
 
         const backPress = (): boolean => {
@@ -396,7 +410,7 @@ export default function TTT() {
     if (mode === "offline" || mode === "computer") handleOnExit()
     if (!currentData) return true
     if (currentData.gameStatus === GameStatus.IN_PROGRESS) {
-      vibrationEnabled && Vibration.vibrate(100)
+      vibrationEnabled.current && Vibration.vibrate(100)
       return true
     }
 
@@ -422,7 +436,7 @@ export default function TTT() {
 
     if (mode !== "offline" && !board[index]) {
       if (gameData?.currentPlayer !== myId.current) {
-        vibrationEnabled && Vibration.vibrate(100)
+        vibrationEnabled.current && Vibration.vibrate(100)
         ToastAndroid.showWithGravity(
           t("not_your_turn"),
           ToastAndroid.SHORT,
@@ -461,12 +475,12 @@ export default function TTT() {
 
   const handleOnExit = () => {
     setCloseModalVisible(false)
-    
+
     if (backHandlerRef.current) {
       backHandlerRef.current.remove()
       backHandlerRef.current = null
     }
-    
+
     navigation.goBack()
   }
 
@@ -503,7 +517,13 @@ export default function TTT() {
   }
 
   const copyRoomCode = () => {
-    vibrationEnabled && Vibration.vibrate(10)
+    vibrationEnabled.current && Vibration.vibrate(10)
+    setCopied(true)
+
+    setTimeout(() => {
+      setCopied(false)
+    }, 4000)
+
     Clipboard.setString(gameData?.gameId ?? "")
     ToastAndroid.showWithGravity(
       t("copied_clipboard"),
@@ -593,6 +613,70 @@ export default function TTT() {
               : () => <></>,
         }}
       />
+
+      {mode !== "offline" && (
+        <Modal
+          animationType="fade"
+          transparent
+          visible={idModalVisible}
+          onRequestClose={() => {
+            setIdModalVisible(false)
+          }}
+        >
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setIdModalVisible(false)
+            }}
+          >
+            <View style={styles.centeredView}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalView}>
+                  <Text
+                    style={{
+                      color: Theme.colors.accent,
+                      fontFamily: Theme.fonts.onestBold,
+                      fontSize: Theme.sizes.h3,
+                      alignSelf: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    {t("invite_friends")}
+                  </Text>
+
+                  <View style={{ gap: 8 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: Theme.colors.accent,
+                          fontFamily: Theme.fonts.onest,
+                          fontSize: Theme.sizes.h4,
+                        }}
+                      >
+                        {gameData?.gameId.toUpperCase()}
+                      </Text>
+
+                      <Pressable onPress={copyRoomCode}>
+                        {copied ? (
+                          <CheckIcon color={Theme.colors.accent} size={16} />
+                        ) : (
+                          <CopyIcon color={Theme.colors.accent} size={16} />
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       <CustomModal
         title={t("close_room")}
@@ -732,7 +816,7 @@ export default function TTT() {
             alignItems: "center",
           }}
         >
-          {winner && (
+          {winner && mode === "online" && (
             <PlayingButton
               flag="restart"
               onPress={() => handleReset()}
@@ -763,7 +847,11 @@ export default function TTT() {
             </Text>
 
             <Pressable onPress={copyRoomCode}>
-              <CopyIcon color={Theme.colors.accent} size={16} />
+              {copied ? (
+                <CheckIcon color={Theme.colors.accent} size={16} />
+              ) : (
+                <CopyIcon color={Theme.colors.accent} size={16} />
+              )}
             </Pressable>
           </View>
 
@@ -876,5 +964,25 @@ const styles = StyleSheet.create({
     color: Theme.colors.lightGray,
     alignSelf: "flex-start",
     fontFamily: Theme.fonts.onestBold,
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.8)",
+  },
+  modalView: {
+    margin: 20,
+    backgroundColor: Theme.colors.modal,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
 })

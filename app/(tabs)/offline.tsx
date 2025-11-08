@@ -108,8 +108,8 @@ export default function Offline() {
             <Text
               style={{
                 color: Theme.colors.text,
-                fontSize: Theme.sizes.h3,
-                fontFamily: Theme.fonts.onest,
+                fontSize: Theme.sizes.h2,
+                fontFamily: Theme.fonts.onestBold,
               }}
             >
               {t("offline_modes")}

@@ -239,7 +239,7 @@ export default function Index() {
             sheetRef.current?.close()
 
             navigate({
-              pathname: "stop",
+              pathname: "ttt",
               params: {
                 mode: flag.split("-")[1],
                 id: gameGot.gameId,
@@ -386,8 +386,8 @@ export default function Index() {
             <Text
               style={{
                 color: Theme.colors.text,
-                fontSize: Theme.sizes.h3,
-                fontFamily: Theme.fonts.onest,
+                fontSize: Theme.sizes.h2,
+                fontFamily: Theme.fonts.onestBold,
               }}
             >
               {t("online_modes")}
