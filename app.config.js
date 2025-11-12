@@ -29,7 +29,7 @@ export default {
       predictiveBackGestureEnabled: false,
       package: "com.rilisentertainment.stoptriviaonline",
       googleServicesFile: "./google-services.json",
-      versionCode: 15,
+      versionCode: 16,
       version: "3.0.2",
       minSdkVersion: 24,
       ndkVersion: "29.0.14206865",
