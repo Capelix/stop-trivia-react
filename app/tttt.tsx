@@ -4,7 +4,6 @@ import {
   CheckIcon,
   CopyIcon,
   OfflineIcon,
-  PlayIcon,
   RestartIcon,
   UserIcon,
   UsersIcon,
@@ -40,6 +39,8 @@ import {
   ToastAndroid,
   Vibration,
   View,
+  Modal,
+  TouchableWithoutFeedback,
 } from "react-native"
 import { BottomSheetModal } from "@/components/BottomSheetModal"
 import Clipboard from "@react-native-clipboard/clipboard"
@@ -56,19 +57,21 @@ const adUnitId = __DEV__
   ? TestIds.INTERSTITIAL
   : "ca-app-pub-5333671658707378/4722063158"
 const initialBoard = Array(16).fill("")
+const POS = { X: "X", O: "O" }
 
 export default function TTT() {
   const [gameData, setGameData] = useState<TTTModel | null>(null)
   const [title, setTitle] = useState<string | null>(null)
-  const [vibrationEnabled, setVibrationEnabled] = useState<boolean>()
   const [closeModalVisible, setCloseModalVisible] = useState<boolean>(false)
   const [connection, setConnection] = useState<boolean>(true)
   const [isPlayerTurn, setIsPlayerTurn] = useState(true)
-  const [ready, setReady] = useState<boolean>(false)
   const [winnerText, setWinnerText] = useState<string | null>(null)
   const [winner, setWinner] = useState<string | null>(null)
   const [board, setBoard] = useState(initialBoard)
   const [loaded, setLoaded] = useState(false)
+  const [pointsAdded, setPointsAdded] = useState<boolean>(false)
+  const [idModalVisible, setIdModalVisible] = useState<boolean>(true)
+  const [copied, setCopied] = useState<boolean>(false)
   const [btnScales] = useState(() =>
     initialBoard.map(() => new Animated.Value(1))
   )
@@ -84,6 +87,11 @@ export default function TTT() {
 
   const sheetRef = useRef<BottomSheet>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const myId = useRef<string | null>(null)
+  const roomId = useRef<string | null>(null)
+  const backHandlerRef = useRef<NativeEventSubscription | null>(null)
+  const playersCount = useRef<number>(1)
+  const vibrationEnabled = useRef<boolean>(undefined)
 
   const handlePressIn = (index: number) => {
     Animated.spring(btnScales[index], {
@@ -112,7 +120,93 @@ export default function TTT() {
     ],
   })
 
+  useFocusEffect(
+    useCallback(() => {
+      const loadSettings = async () => {
+        const vibrationValue = await getItem("vibration")
+        vibrationEnabled.current = parseBoolean(vibrationValue)
+      }
+
+      const backPress = () => handleBackPress()
+      backHandlerRef.current = BackHandler.addEventListener(
+        "hardwareBackPress",
+        backPress
+      )
+
+      loadSettings()
+
+      return () => {
+        if (backHandlerRef.current) {
+          backHandlerRef.current.remove()
+          backHandlerRef.current = null
+        }
+      }
+    }, [])
+  )
+
   useEffect(() => {
+    // Check the winner
+    const lines = [
+      [0, 1, 2, 3],
+      [4, 5, 6, 7],
+      [8, 9, 10, 11],
+      [12, 13, 14, 15],
+      [0, 4, 8, 12],
+      [1, 5, 9, 13],
+      [2, 6, 10, 14],
+      [3, 7, 11, 15],
+      [0, 5, 10, 15],
+      [3, 6, 9, 12],
+    ]
+
+    for (let i = 0; i < lines.length; i++) {
+      const [a, b, c, d] = lines[i]
+      if (
+        board[a] &&
+        board[a] === board[b] &&
+        board[a] === board[c] &&
+        board[a] === board[d]
+      ) {
+        setWinner(board[a])
+
+        if (mode === "offline") {
+          setWinnerText(`${board[a]} ${t("win")}`)
+        } else {
+          board[a] === myId.current && setWinnerText(t("you_win"))
+          board[a] !== myId.current && setWinnerText(t("you_loose"))
+
+          if (mode === "online") {
+            Fire.updateGame("tttt", roomId.current!, {
+              gameStatus: GameStatus.STOPPED,
+            })
+          }
+
+          if (!pointsAdded) sumWins()
+        }
+
+        return
+      }
+    }
+
+    if (board.every((square) => square)) {
+      setWinner("draw")
+      setWinnerText(t("draw"))
+    }
+  }, [board])
+
+  useEffect(() => {
+    let gameId = id
+    let unsubscribe: (() => void) | undefined
+    let connectionUnsubscribe: (() => void) | undefined
+    let backHandler: NativeEventSubscription
+    let currentGameData: TTTModel
+
+    connectionUnsubscribe = NetInfo.addEventListener((state) => {
+      setConnection(state.isConnected ?? false)
+
+      if (!state.isConnected) setLoaded(true)
+    })
+
     const unsubscribeLoaded = interstitial.addAdEventListener(
       AdEventType.LOADED,
       () => {
@@ -141,43 +235,13 @@ export default function TTT() {
 
     interstitial.load()
 
-    return () => {
-      unsubscribeLoaded()
-      unsubscribeOpened()
-      unsubscribeClosed()
-    }
-  }, [])
-
-  useFocusEffect(
-    useCallback(() => {
-      const loadSettings = async () => {
-        const vibrationValue = await getItem("vibration")
-        setVibrationEnabled(parseBoolean(vibrationValue))
-      }
-      loadSettings()
-    }, [])
-  )
-
-  useEffect(() => {
-    checkWinner()
-  }, [board])
-
-  useEffect(() => {
-    let gameId = id
-    let unsubscribe: (() => void) | undefined
-    let connectionUnsubscribe: (() => void) | undefined
-    let backHandler: NativeEventSubscription
-    let currentGameData: TTTModel
-    console.log(mode, id)
-
     if (mode === "online") {
       gameId = sixDigit()
-      Fire.setGame("ttt", gameId, {
+      Fire.setGame("tttt", gameId, {
         gameId,
-        round: 0,
+        round: 1,
         currentPlayer: getRandomXO(),
         gameStatus: GameStatus.CREATED,
-        playersReady: 1,
         players: [
           {
             id: getAuth().currentUser?.uid,
@@ -195,20 +259,21 @@ export default function TTT() {
     }
 
     if (mode === "join") {
-      Fire.getGame("ttt", gameId).then((data) => {
+      Fire.getGame("tttt", gameId).then((data) => {
         if (!data) return
         const userName = getAuth().currentUser?.displayName
         const userId = getAuth().currentUser?.uid
         const alreadyIn = data.players.some((p) => p.id === userId)
 
         if (!alreadyIn) {
-          Fire.updateGame("ttt", gameId, {
+          Fire.updateGame("tttt", gameId, {
             players: [
               ...data.players,
               {
                 id: userId,
                 name: userName,
-                points: 0,
+                photoURL: getAuth().currentUser?.photoURL!,
+                wins: 0,
               },
             ],
           })
@@ -217,6 +282,7 @@ export default function TTT() {
     }
 
     if (mode === "offline" || mode === "computer") {
+      myId.current = POS.X
       const backPress = (): boolean => {
         return handleBackPress(currentGameData)
       }
@@ -226,48 +292,67 @@ export default function TTT() {
       return
     }
 
-    unsubscribe = Fire.onGameChange("ttt", gameId, (data) => {
-      if (!data) {
-        if (mode === "join") {
-          ToastAndroid.showWithGravity(
-            t("host_closed_game"),
-            ToastAndroid.SHORT,
-            ToastAndroid.CENTER
-          )
-          navigation.goBack()
-          if (timerRef.current) clearInterval(timerRef.current)
+    if (mode !== "offline" && mode !== "computer") {
+      unsubscribe = Fire.onGameChange("tttt", gameId, (data) => {
+        if (!data) {
+          if (mode === "join") {
+            ToastAndroid.showWithGravity(
+              t("host_closed_game"),
+              ToastAndroid.SHORT,
+              ToastAndroid.CENTER
+            )
+            navigation.goBack()
+            if (timerRef.current) clearInterval(timerRef.current)
+          }
+          return
         }
-        return
-      }
 
-      currentGameData = data as TTTModel
-      setGameData(currentGameData)
-      setBoard(currentGameData.filledPos)
-      setTitleByGameStatus(connection ? currentGameData.gameStatus : 3)
+        currentGameData = data as TTTModel
+        roomId.current = currentGameData.gameId
+        setGameData(currentGameData)
+        setBoard(currentGameData.filledPos)
+        setIsPlayerTurn(currentGameData?.currentPlayer === POS.X)
+        setTitleByGameStatus(connection ? currentGameData.gameStatus : 3)
 
-      if (currentGameData.gameStatus === GameStatus.CREATED) {
-        setReady(false)
-        handleReset()
-      }
+        playersCount.current = currentGameData.players.length
+        if (playersCount.current > 1) {
+          setIdModalVisible(false)
+        }
 
-      if (currentGameData.gameStatus === GameStatus.STOPPED) {
-        checkWinner()
-      }
+        if (currentGameData.gameStatus === GameStatus.CREATED) {
+          setWinnerText(null)
+          setWinner(null)
+          pointsAdded && setPointsAdded(false)
 
-      const backPress = (): boolean => {
-        return handleBackPress(currentGameData)
-      }
+          if (mode === "online" && !myId.current) {
+            currentGameData.players.forEach((p) => {
+              if (getAuth().currentUser?.uid === p.id) {
+                myId.current = p.pos
+              }
+            })
+          }
 
-      backHandler = BackHandler.addEventListener("hardwareBackPress", backPress)
-    })
+          if (mode === "join" && !myId.current) {
+            currentGameData.players.forEach((p) => {
+              if (p.id === currentGameData.host) {
+                myId.current = p.pos === POS.X ? POS.O : POS.X
+              }
+            })
+          }
+        }
 
-    connectionUnsubscribe = NetInfo.addEventListener((state) => {
-      setConnection(state.isConnected ?? false)
-    })
+        const backPress = (): boolean => {
+          return handleBackPress(currentGameData)
+        }
+
+        backHandler = BackHandler.addEventListener(
+          "hardwareBackPress",
+          backPress
+        )
+      })
+    }
 
     return () => {
-      console.log("Cleaning up...")
-
       if (unsubscribe) {
         unsubscribe()
         unsubscribe = undefined
@@ -278,15 +363,21 @@ export default function TTT() {
         connectionUnsubscribe = undefined
       }
 
+      unsubscribeLoaded()
+      unsubscribeOpened()
+      unsubscribeClosed()
+
+      roomId.current = null
+
       if (timerRef.current) clearInterval(timerRef.current)
       if (backHandler) backHandler.remove()
 
       if (mode === "online" && gameId) {
-        Fire.deleteGame("ttt", gameId)
+        Fire.deleteGame("tttt", gameId)
       }
 
       if (mode === "join" && gameId && currentGameData) {
-        Fire.updateGame("ttt", gameId, {
+        Fire.updateGame("tttt", gameId, {
           players: currentGameData
             ? currentGameData.players.filter(
                 (player) => player.id !== getAuth().currentUser?.uid
@@ -298,7 +389,7 @@ export default function TTT() {
   }, [])
 
   const getRandomXO = (): string => {
-    const values = ["X", "O"]
+    const values = [POS.X, POS.O]
     const randomIndex = Math.floor(Math.random() * values.length)
     return values[randomIndex]
   }
@@ -306,10 +397,10 @@ export default function TTT() {
   const setTitleByGameStatus = (gameStatus: number | undefined) => {
     switch (gameStatus) {
       case GameStatus.CREATED:
-        setTitle(t("waiting_players"))
+        setTitle("Tic Tac Tuc Toe")
         break
       case GameStatus.IN_PROGRESS:
-        setTitle(t("fill_spaces"))
+        setTitle("Tic Tac Tuc Toe")
         break
       case GameStatus.STOPPED:
         setTitle("STOP!")
@@ -320,47 +411,13 @@ export default function TTT() {
     }
   }
 
-  const checkWinner = () => {
-    const lines = [
-      [0, 1, 2, 3],
-      [4, 5, 6, 7],
-      [8, 9, 10, 11],
-      [12, 13, 14, 15],
-      [0, 4, 8, 12],
-      [1, 5, 9, 13],
-      [2, 6, 10, 14],
-      [3, 7, 11, 15],
-      [0, 5, 10, 15],
-      [3, 6, 9, 12],
-    ]
-
-    for (let i = 0; i < lines.length; i++) {
-      const [a, b, c, d] = lines[i]
-      if (
-        board[a] &&
-        board[a] === board[b] &&
-        board[a] === board[c] &&
-        board[a] === board[d]
-      ) {
-        setWinner(board[a])
-        setWinnerText(`${board[a]} Win!`)
-        return
-      }
-    }
-
-    if (board.every((square) => square)) {
-      setWinner("draw")
-      setWinnerText("Draw!")
-    }
-  }
-
   const handleBackPress = (data?: TTTModel | null): boolean => {
     const currentData = data ?? gameData
 
     if (mode === "offline" || mode === "computer") handleOnExit()
     if (!currentData) return true
     if (currentData.gameStatus === GameStatus.IN_PROGRESS) {
-      vibrationEnabled && Vibration.vibrate(100)
+      vibrationEnabled.current && Vibration.vibrate(100)
       return true
     }
 
@@ -375,17 +432,34 @@ export default function TTT() {
   }
 
   const handleSquarePress = (index: number) => {
-    if (!board[index] && !winner) {
+    if (winner) return
+
+    if (mode === "offline" && !board[index]) {
       const newBoard = [...board]
-      newBoard[index] = isPlayerTurn ? "X" : "O"
+      newBoard[index] = isPlayerTurn ? POS.X : POS.O
       setBoard(newBoard)
       setIsPlayerTurn(!isPlayerTurn)
     }
-  }
 
-  const handlePress = (flag: string) => {
-    if (flag === "restart") {
-      handleReset()
+    if (mode !== "offline" && !board[index]) {
+      if (gameData?.currentPlayer !== myId.current) {
+        vibrationEnabled.current && Vibration.vibrate(100)
+        ToastAndroid.showWithGravity(
+          t("not_your_turn"),
+          ToastAndroid.SHORT,
+          ToastAndroid.CENTER
+        )
+        return
+      }
+
+      const newBoard = [...board]
+      newBoard[index] = gameData?.currentPlayer
+      setBoard(newBoard)
+
+      Fire.updateGame("tttt", gameData.gameId, {
+        currentPlayer: gameData?.currentPlayer === POS.X ? POS.O : POS.X,
+        filledPos: newBoard,
+      })
     }
   }
 
@@ -395,15 +469,25 @@ export default function TTT() {
     setWinner(null)
     setWinnerText(null)
 
-    if (mode === "offline" || mode === "join") return
+    if (mode === "offline") return
+    if (!gameData) return
 
-    Fire.updateGame("ttt", id, {
+    Fire.updateGame("tttt", roomId.current!, {
+      currentPlayer: getRandomXO(),
       filledPos: initialBoard,
+      gameStatus: GameStatus.CREATED,
+      round: gameData.round + 1,
     })
   }
 
   const handleOnExit = () => {
     setCloseModalVisible(false)
+
+    if (backHandlerRef.current) {
+      backHandlerRef.current.remove()
+      backHandlerRef.current = null
+    }
+
     navigation.goBack()
   }
 
@@ -415,8 +499,38 @@ export default function TTT() {
     sheetRef.current?.expand()
   }
 
+  const sumWins = () => {
+    if (!gameData) return
+    if (!getAuth().currentUser?.uid) return
+    if (winner !== myId.current) return
+
+    const userId = getAuth().currentUser?.uid
+
+    const updatedPlayers = gameData.players.map((p) => {
+      if (p.id === userId) {
+        return {
+          ...p,
+          wins: p.wins + 1,
+        }
+      }
+      return p
+    })
+
+    Fire.updateGame("tttt", gameData.gameId, {
+      players: updatedPlayers,
+    })
+
+    setPointsAdded(true)
+  }
+
   const copyRoomCode = () => {
-    vibrationEnabled && Vibration.vibrate(10)
+    vibrationEnabled.current && Vibration.vibrate(10)
+    setCopied(true)
+
+    setTimeout(() => {
+      setCopied(false)
+    }, 4000)
+
     Clipboard.setString(gameData?.gameId ?? "")
     ToastAndroid.showWithGravity(
       t("copied_clipboard"),
@@ -507,6 +621,70 @@ export default function TTT() {
         }}
       />
 
+      {mode !== "offline" && (
+        <Modal
+          animationType="fade"
+          transparent
+          visible={idModalVisible}
+          onRequestClose={() => {
+            setIdModalVisible(false)
+          }}
+        >
+          <TouchableWithoutFeedback
+            onPress={() => {
+              setIdModalVisible(false)
+            }}
+          >
+            <View style={styles.centeredView}>
+              <TouchableWithoutFeedback>
+                <View style={styles.modalView}>
+                  <Text
+                    style={{
+                      color: Theme.colors.accent,
+                      fontFamily: Theme.fonts.onestBold,
+                      fontSize: Theme.sizes.h3,
+                      alignSelf: "center",
+                      marginBottom: 16,
+                    }}
+                  >
+                    {t("invite_friends")}
+                  </Text>
+
+                  <View style={{ gap: 8 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 8,
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: Theme.colors.accent,
+                          fontFamily: Theme.fonts.onest,
+                          fontSize: Theme.sizes.h4,
+                        }}
+                      >
+                        {gameData?.gameId.toUpperCase()}
+                      </Text>
+
+                      <Pressable onPress={copyRoomCode}>
+                        {copied ? (
+                          <CheckIcon color={Theme.colors.accent} size={16} />
+                        ) : (
+                          <CopyIcon color={Theme.colors.accent} size={16} />
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
+
       <CustomModal
         title={t("close_room")}
         description={
@@ -535,7 +713,7 @@ export default function TTT() {
             fontSize: Theme.sizes.h3,
           }}
         >
-          {isPlayerTurn ? "X" : "O"} Turn
+          {t("turn")}: {isPlayerTurn ? POS.X : POS.O}
         </Text>
       </View>
 
@@ -580,7 +758,7 @@ export default function TTT() {
                 <Text
                   style={{
                     color:
-                      board[index] === "X"
+                      board[index] === POS.X
                         ? Theme.colors.accent
                         : Theme.colors.text,
                     fontFamily: Theme.fonts.onestBold,
@@ -608,7 +786,7 @@ export default function TTT() {
           style={{
             color: Theme.colors.text,
             fontFamily: Theme.fonts.onestBold,
-            fontSize: 56,
+            fontSize: 46,
           }}
         >
           {winnerText}
@@ -629,7 +807,10 @@ export default function TTT() {
               {t("round")}: {gameData?.round === 0 ? 1 : (gameData?.round ?? 0)}
             </Text>
             <Text style={styles.texts}>
-              {t("letter")}: {isPlayerTurn ? "X" : "O"}
+              {t("you")}:{" "}
+              {mode === "offline"
+                ? `${isPlayerTurn ? POS.X : POS.O}`
+                : myId.current}
             </Text>
           </View>
         )}
@@ -642,30 +823,10 @@ export default function TTT() {
             alignItems: "center",
           }}
         >
-          {gameData?.gameStatus !== GameStatus.IN_PROGRESS && (
-            <>
-              {mode === "online" && (
-                <PlayingButton
-                  flag="play"
-                  onPress={() => handlePress("play")}
-                  icon={<PlayIcon size={30} />}
-                />
-              )}
-
-              {mode === "join" && !ready && (
-                <PlayingButton
-                  flag="ready"
-                  onPress={() => handlePress("ready")}
-                  icon={<CheckIcon size={30} />}
-                />
-              )}
-            </>
-          )}
-
-          {(mode === "offline" || mode === "computer") && (
+          {winner && (mode === "online" || mode === "offline") && (
             <PlayingButton
               flag="restart"
-              onPress={() => handlePress("restart")}
+              onPress={() => handleReset()}
               icon={<RestartIcon size={30} />}
             />
           )}
@@ -693,7 +854,11 @@ export default function TTT() {
             </Text>
 
             <Pressable onPress={copyRoomCode}>
-              <CopyIcon color={Theme.colors.accent} size={16} />
+              {copied ? (
+                <CheckIcon color={Theme.colors.accent} size={16} />
+              ) : (
+                <CopyIcon color={Theme.colors.accent} size={16} />
+              )}
             </Pressable>
           </View>
 
@@ -806,5 +971,25 @@ const styles = StyleSheet.create({
     color: Theme.colors.lightGray,
     alignSelf: "flex-start",
     fontFamily: Theme.fonts.onestBold,
+  },
+  centeredView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.8)",
+  },
+  modalView: {
+    margin: 20,
+    backgroundColor: Theme.colors.modal,
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
 })
