@@ -1,7 +1,7 @@
-# → Capelix' Web | Blog | Portfolio ←
+# → Stop Trivia Online ←
 
-<a href="https://github.com/Capelix/stop-trivia-react">
-  <img src="https://capelix.dev/images/stop-trivia.webp" />
+<a href="https://github.com/rixel/stop-trivia-react">
+  <img src="https://rixel.dev/images/stop-trivia.webp" />
 </a>
 
 [Dowmload it →](https://play.google.com/store/apps/details?id=com.rilisentertainment.stoptriviaonline)
@@ -21,7 +21,7 @@ Follow these steps to set up and run the Stop Trivia Online project locally:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/Capelix/stop-trivia-react.git
+   git clone https://github.com/rixel/stop-trivia-react.git
    ```
 
 2. **Navigate into the project folder**
